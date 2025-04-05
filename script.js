@@ -137,7 +137,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-`);
+    `);
 
     // Add package.json
     projectFolder.file("package.json", `{
@@ -169,7 +169,7 @@ SOFTWARE.
     "cheerio": "^1.0.0-rc.12",
     "fs-extra": "^11.2.0"
   }
-}`);
+    `);
 
     // Add main.js (Electron main process)
     projectFolder.file("main.js", `
@@ -388,7 +388,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             const ownPackageJson = require('./package.json');
             electronVersion = ownPackageJson.devDependencies.electron;
             if (!electronVersion) throw new Error('Electron version not found in devDependencies.');
-             sendStatus(mainWindow, \`Using Electron version: \${electronVersion}\`); 
+             sendStatus(mainWindow, \`Using Electron version: \${electronVersion}\`);
         } catch (e) {
             console.error("Failed to read own package.json for Electron version:", e);
             sendStatus(mainWindow, "Warning: Could not determine Electron version. Using default 'latest'.");
@@ -422,9 +422,9 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             const installCommand = 'npm install --omit=dev --ignore-scripts --prefer-offline --no-audit --progress=false'; 
              exec(installCommand, { cwd: appContentDir, timeout: 180000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`Packaged app 'npm install' error: \${error.message}\`); 
-                    console.error(\`stderr: \${stderr}\`); 
-                    sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr || error.message}\`); 
+                    console.error(\`Packaged app 'npm install' error: \${error.message}\`);
+                    console.error(\`stderr: \${stderr}\`);
+                    sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr || error.message}\`);
                     return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`)); 
                 }
                  // Log warnings from stderr as well
@@ -432,7 +432,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                      console.warn(\`Packaged app 'npm install' stderr (warnings):\\n\${stderr}\`);
                      sendStatus(mainWindow, \`Dependency installation completed with warnings (see console).\`);
                  } else {
-                     console.log(\`Packaged app 'npm install' stdout: \${stdout}\`); 
+                     console.log(\`Packaged app 'npm install' stdout: \${stdout}\`);
                      sendStatus(mainWindow, 'Packaged app dependencies installed successfully.');
                  }
                 resolve();
@@ -450,13 +450,13 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             if (await fs.pathExists(iconPath)) {
                  // Quote the icon path for the shell command
                  // Using JSON.stringify is a robust way to escape for shell
-                 iconArg = `--icon=${JSON.stringify(iconPath)}`;
-                 sendStatus(mainWindow, `Using icon: ${iconPath}`);
+                 iconArg = \`--icon=\\\${JSON.stringify(iconPath)}\\\`;
+                 sendStatus(mainWindow, \`Using icon: \\\${iconPath}\\\`);
              } else {
-                  sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`);
+                  sendStatus(mainWindow, \`Warning: Icon file not found at \\\${iconPath}\`. Using default icon.\\\`);
              }
         } catch(iconError) {
-             sendStatus(mainWindow, `Warning: Error checking for icon file: ${iconError.message}`);
+             sendStatus(mainWindow, \`Warning: Error checking for icon file: \\\${iconError.message}\\\`);
         }
 
         // Quote the output directory path for the shell command
@@ -468,42 +468,45 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             '/node_modules/electron-packager($|/)', // Ignore packager
             // Keep essential electron build deps if needed, but prune others
             '/node_modules/.bin($|/)',
-            '/node_modules/\\.cache($|/)' ,
-            '\\.git($|/)' ,
+            '/node_modules/\\\\.cache($|/)' , // Escaped backslash for JS string
+            '\\\\.git($|/)' , // Escaped backslash for JS string
             '/dist($|/)' ,
             '/temp-build-.*',
-            'README\\.md',
-            '\\.env'
+            'README\\\\.md', // Escaped backslash for JS string
+            '\\\\.env' // Escaped backslash for JS string
              // We DO need package-lock.json in the temp dir for npm install
              // '/package-lock\\.json'
         ];
         // Construct the ignore arguments string, quoting each pattern
-        const ignoreArgsString = ignorePatterns.map(pattern => `--ignore=${JSON.stringify(pattern)}`).join(' ');
+        // Escape inner backticks and dollar signs for outer template literal
+        const ignoreArgsString = ignorePatterns.map(pattern => \`--ignore=\\\${JSON.stringify(pattern)}\`).join(' ');
 
         // Use npx to ensure electron-packager is found
         // Ensure finalAppName is quoted if it could contain spaces (though unlikely here)
         // Use properly quoted paths for --out and --icon
-        const packagerCommand = `npx electron-packager . ${JSON.stringify(PACKAGED_APP_NAME)} --platform=win32 --arch=x64 --out=${quotedOutputDir} --overwrite ${iconArg} ${ignoreArgsString}`;
+        // Escape inner backticks and dollar signs for outer template literal
+        const packagerCommand = \`npx electron-packager . \\\${JSON.stringify(PACKAGED_APP_NAME)} --platform=win32 --arch=x64 --out=\\\${quotedOutputDir} --overwrite \\\${iconArg} \\\${ignoreArgsString}\\\`;
         // --- End of changes for robust quoting ---
 
-        sendStatus(mainWindow, `Executing: ${packagerCommand}`);
+        // Escape inner backtick and dollar sign for outer template literal
+        sendStatus(mainWindow, \`Executing: \\\${packagerCommand}\\\`);
 
         await new Promise((resolve, reject) => {
             // Pass the command directly to exec, shell quoting is handled above
             exec(packagerCommand, { cwd: appContentDir, timeout: 450000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(`electron-packager execution error: ${error.message}`);
-                    console.error(`stderr: ${stderr}`);
+                    console.error(\`electron-packager execution error: \${error.message}\`);
+                    console.error(\`stderr: \${stderr}\`);
                     // Send the actual stderr which likely contains the specific error
-                    sendStatus(mainWindow, `Packaging failed: ${stderr || error.message}`);
+                    sendStatus(mainWindow, \`Packaging failed: \${stderr || error.message}\`);
                     // Reject with a more specific error message including stderr if available
-                    return reject(new Error(`electron-packager command failed: ${stderr || error.message}`));
+                    return reject(new Error(\`electron-packager command failed: \${stderr || error.message}\`));
                 }
-                console.log(`electron-packager stdout: ${stdout}`);
+                console.log(\`electron-packager stdout: \${stdout}\`);
                  if (stderr) {
-                     console.warn(`electron-packager stderr (warnings):\\n${stderr}`);
+                     console.warn(\`electron-packager stderr (warnings):\\n\${stderr}\`);
                      // Avoid overwriting success message with warnings unless critical
-                     sendStatus(mainWindow, `Packaging finished with warnings (check console).`);
+                     sendStatus(mainWindow, \`Packaging finished with warnings (check console).\`);
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -512,30 +515,31 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         });
 
         // Adjust final path calculation if app name changes
-        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`);
-        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`);
+        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`);
+        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`);
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, `ERROR: ${errorMessage}`);
+        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`);
         console.error(error.stack);
         return { success: false, error: errorMessage };
     } finally {
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`);
+                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`);
                  await fs.remove(tempBuildDir);
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`);
-                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`);
+                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`);
+                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`);
             }
         }
         sendStatus(mainWindow, 'Process finished.');
     }
 });
+    `); // End of projectFolder.file("main.js", ...)
 
     // Add preload.js (Electron preload script)
     projectFolder.file("preload.js", `
