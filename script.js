@@ -404,8 +404,11 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             author: "Websim Packager",
             license: "UNLICENSED", 
             dependencies: {
+                // Dependencies needed by the *packaged* app would go here,
+                // but usually it just needs Electron, handled below.
             },
             devDependencies: {
+                 // We install Electron here so electron-packager can find it
                  "electron": electronVersion
             }
         }, null, 2); 
@@ -414,7 +417,9 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
         sendStatus(mainWindow, 'Installing dependencies for the packaged app (this may take a moment)...');
         await new Promise((resolve, reject) => {
-            const installCommand = 'npm ci --production --ignore-scripts --prefer-offline --no-audit --progress=false'; 
+            // Use 'npm install' instead of 'npm ci' as there is no lock file
+            // Use '--omit=dev' instead of '--production' for modern npm
+            const installCommand = 'npm install --omit=dev --ignore-scripts --prefer-offline --no-audit --progress=false'; 
              exec(installCommand, { cwd: appContentDir, timeout: 180000 }, (error, stdout, stderr) => {
                 if (error) {
                     console.error(\`Packaged app 'npm install' error: \${error.message}\`); 
@@ -422,8 +427,14 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                     sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr || error.message}\`); 
                     return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`)); 
                 }
-                console.log(\`Packaged app 'npm install' stdout: \${stdout}\`); 
-                sendStatus(mainWindow, 'Packaged app dependencies installed.');
+                 // Log warnings from stderr as well
+                 if (stderr) {
+                     console.warn(\`Packaged app 'npm install' stderr (warnings):\\n\${stderr}\`);
+                     sendStatus(mainWindow, \`Dependency installation completed with warnings (see console).\`);
+                 } else {
+                     console.log(\`Packaged app 'npm install' stdout: \${stdout}\`); 
+                     sendStatus(mainWindow, 'Packaged app dependencies installed successfully.');
+                 }
                 resolve();
             });
         });
@@ -439,7 +450,8 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
              "--ignore=/\\.git($|/)",
              "--ignore=/dist($|/)",
              "--ignore=/temp-build-.*",
-             "--ignore=/package-lock\\.json" 
+             // Don't ignore the lockfile now, packager might use it
+             //"--ignore=/package-lock\\.json" 
         ];
         const ignoreString = ignoreArgs.join(" "); 
 
@@ -459,6 +471,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
         const finalAppName = PACKAGED_APP_NAME;
         const finalOutputDir = outputDirUserSelected.replace(/\\\\/g, '/'); 
+        // Use npx to ensure electron-packager is found
         const packagerCommand = \`npx electron-packager . "\${finalAppName}" --platform=win32 --arch=x64 --out="\${finalOutputDir}" --overwrite \${iconArg} \${ignoreString}\`; 
         sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
 
@@ -520,6 +533,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStatusUpdate: (callback) => {
         const subscription = (_event, value) => callback(value);
         ipcRenderer.on('status-update', subscription);
+        // Return a function to unsubscribe
         return () => ipcRenderer.removeListener('status-update', subscription);
     },
 });
@@ -531,6 +545,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 <html>
 <head>
     <meta charset="UTF-8">
+    <!-- Relax CSP slightly to allow inline styles and scripts for simplicity in this context -->
+    <!-- A real-world app might use nonces or hashes -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
     <title>Websim Downloader & Packager</title>
     <style>
@@ -687,7 +703,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         .status-line.warning {
             color: #856404; 
             background-color: #fff3cd; 
-            border-left: 3px solid(var(--warning-color));
+            border-left: 3px solid var(--warning-color); /* Corrected variable name */
         }
         .status-line.success {
             color: var(--success-color);
@@ -697,7 +713,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
          .status-line.info { 
              border-left: 3px solid var(--info-color);
-             color: var(--info-color);
+             color: #0c5460; /* Darker info color for better readability */
+             background-color: #d1ecf1; /* Lighter info background */
          }
     </style>
 </head>
@@ -746,30 +763,36 @@ let isProcessing = false;
 let removeStatusListener = null; 
 
 function addStatus(message, type = 'info') {
+    // Guard against adding empty or non-string messages
     if (typeof message !== 'string' || message.trim() === '') {
+        console.warn("[addStatus] Attempted to add empty or non-string status:", message);
         return;
     }
     console.log(\`[Status-\${type}] \${message}\`); 
 
     const line = document.createElement('div');
     line.classList.add('status-line');
+    // Use textContent to prevent potential XSS if message somehow contained HTML
     line.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`; 
 
-    line.classList.add(type); 
+    // Add appropriate class based on type
+    line.classList.add(type); // 'info', 'success', 'warning', 'error'
 
     statusDiv.appendChild(line);
+    // Auto-scroll to the bottom
     statusDiv.scrollTop = statusDiv.scrollHeight; 
 }
 
 function clearStatus() {
     statusDiv.innerHTML = ''; 
-    addStatus("Log cleared."); 
+    addStatus("Log cleared."); // Add a message indicating the log was cleared
 }
 
 function setControlsEnabled(enabled) {
     isProcessing = !enabled;
     urlInput.disabled = !enabled;
     selectDirBtn.disabled = !enabled;
+    // Re-check form validity when enabling/disabling package button
     packageBtn.disabled = !enabled || !isFormValid();
 
     if (isProcessing) {
@@ -784,10 +807,12 @@ function isFormValid() {
     const urlValue = urlInput.value.trim();
     const dirValue = outputDirInput.value.trim();
 
+    // Check if URL is non-empty, is a valid URL structure, and starts with http/https
     if (!urlValue || !urlInput.checkValidity() || !urlValue.toLowerCase().startsWith('http')) {
          isValid = false;
     }
 
+    // Check if directory path is non-empty
     if (!dirValue) {
         isValid = false;
     }
@@ -795,6 +820,7 @@ function isFormValid() {
     return isValid;
 }
 
+// Function to check form validity and update the button state accordingly
 function checkFormValidityAndUpdateButton() {
     packageBtn.disabled = !isFormValid() || isProcessing;
 }
@@ -805,13 +831,14 @@ selectDirBtn.addEventListener('click', async () => {
         return;
     }
     addStatus('Opening directory selector...');
+    // Disable controls while dialog is open
     setControlsEnabled(false); 
     try {
         const directoryPath = await window.electronAPI.selectDirectory();
         if (directoryPath) {
-            outputDirInput.value = directoryPath; 
+            outputDirInput.value = directoryPath; // Update the input field
             addStatus(\`Output directory selected: \${directoryPath}\`, 'info');
-            checkFormValidityAndUpdateButton(); 
+            checkFormValidityAndUpdateButton(); // Update button state
         } else {
              addStatus('Directory selection cancelled.', 'warning');
         }
@@ -819,6 +846,7 @@ selectDirBtn.addEventListener('click', async () => {
         console.error('Error selecting directory via IPC:', error);
         addStatus(\`Error selecting directory: \${error.message || 'Unknown error'}\`, 'error');
     } finally {
+         // Re-enable controls regardless of outcome
          setControlsEnabled(true); 
     }
 });
@@ -826,7 +854,7 @@ selectDirBtn.addEventListener('click', async () => {
 packageBtn.addEventListener('click', async () => {
     if (!isFormValid() || isProcessing) {
         addStatus("Please ensure a valid URL (starting with http/https) is entered and an output directory is selected.", "warning");
-        return; 
+        return; // Prevent execution if form is invalid or already processing
     }
     if (!window.electronAPI?.startPackaging) {
          addStatus("Error: Packaging feature not available.", 'error');
@@ -836,64 +864,73 @@ packageBtn.addEventListener('click', async () => {
     const targetUrl = urlInput.value.trim();
     const outputDir = outputDirInput.value.trim();
 
-    clearStatus();
+    clearStatus(); // Clear previous logs before starting a new process
     addStatus(\`Starting download and packaging for: \${targetUrl}\`, 'info');
-    setControlsEnabled(false); 
+    setControlsEnabled(false); // Disable controls during processing
 
     try {
+        // Invoke the main process function
         const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
 
+        // Handle the result from the main process
         if (result && result.success) {
             addStatus(\`------------------------------------------\`, 'success');
             addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
             addStatus(\`Output Location: \${result.outputDir}\`, 'success');
             addStatus(\`------------------------------------------\`, 'success');
         } else {
+             // Use optional chaining in case result is undefined/null
              addStatus(\`------------------------------------------\`, 'error');
              addStatus(\`FAILURE: Process encountered an error.\`, 'error');
              addStatus(\`Error details: \${result?.error || 'Unknown error during packaging.'}\`, 'error');
              addStatus(\`------------------------------------------\`, 'error');
         }
     } catch (error) {
+        // Catch errors during the IPC call itself
         console.error('IPC invocation error (startPackaging):', error);
         addStatus(\`------------------------------------------\`, 'error');
         addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with backend: \${error.message || 'Unknown IPC error'}\`, 'error');
         addStatus(\`------------------------------------------\`, 'error');
     } finally {
-        setControlsEnabled(true); 
+        setControlsEnabled(true); // Re-enable controls when done
     }
 });
 
+// Add listeners to update button state on input changes
 urlInput.addEventListener('input', checkFormValidityAndUpdateButton);
-urlInput.addEventListener('blur', checkFormValidityAndUpdateButton);
+urlInput.addEventListener('blur', checkFormValidityAndUpdateButton); // Also check on blur
 
+// Set up the listener for status updates from the main process
 if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function') {
     try {
         removeStatusListener = window.electronAPI.onStatusUpdate((message) => {
-             let type = 'info'; 
-             message = String(message || ''); 
+             let type = 'info'; // Default type
+             message = String(message || ''); // Ensure message is a string
 
+             // Basic parsing to determine message type based on keywords
              if (message.startsWith('ERROR:')) {
                  type = 'error';
-                 message = message.substring(6).trim();
+                 message = message.substring(6).trim(); // Remove prefix
              } else if (message.startsWith('Warning:')) {
                  type = 'warning';
-                 message = message.substring(8).trim();
+                 message = message.substring(8).trim(); // Remove prefix
              } else if (message.includes('successful!') || message.includes('SUCCESS') || message.includes('complete.')) {
                  type = 'success';
               } else if (message.includes('failed') || message.includes('FAILURE')) {
                   type = 'error';
               }
+              // Add other keywords as needed, e.g., 'Starting', 'Fetching' could be 'info'
 
              addStatus(message, type);
         });
         console.log("[Renderer] Status update listener registered successfully.");
 
+        // Ensure the listener is removed when the window is closed/reloaded
         window.addEventListener('beforeunload', () => {
             if (removeStatusListener) {
                 console.log("[Renderer] Cleaning up status update listener.");
-                removeStatusListener(); 
-                removeStatusListener = null; 
+                removeStatusListener(); // Execute the cleanup function returned by onStatusUpdate
+                removeStatusListener = null; // Clear the reference
             }
         });
 
@@ -906,6 +943,7 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
     addStatus("Error: Cannot receive status updates from backend (API not found).", 'error');
 }
 
+// Initial check of the form validity when the page loads
 checkFormValidityAndUpdateButton();
     `);
 
