@@ -891,18 +891,12 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
              let type = 'info'; 
              message = String(message || ''); 
 
-             if (message.startsWith('ERROR:')) {
-                 type = 'error';
-                 message = message.substring(6).trim(); 
-             } else if (message.startsWith('Warning:')) {
-                 type = 'warning';
-                 message = message.substring(8).trim(); 
-             } else if (message.includes('successful!') || message.includes('SUCCESS') || message.includes('complete.')) {
+             if (message.includes('successful!') || message.includes('SUCCESS') || message.includes('complete.')) {
                  type = 'success';
-              } else if (message.includes('failed') || message.includes('FAILURE')) {
-                  type = 'error';
-              }
-              addStatus(message, type);
+             } else if (message.includes('failed') || message.includes('FAILURE')) {
+                 type = 'error';
+             }
+             addStatus(message, type);
         });
         console.log("[Renderer] Status update listener registered successfully.");
 
@@ -979,7 +973,7 @@ yarn-error.log*
 
 # Temporary Directories Used by This App
 temp-*
-websim-build-*/
+websim-build-*
 
 # OS Generated Files
 .DS_Store
