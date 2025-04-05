@@ -216,7 +216,7 @@ app.on('window-all-closed', function () {
 function sendStatus(window, message) {
     if (window && !window.isDestroyed() && window.webContents) {
        try {
-           console.log(\`[Status] \${message}\`); 
+           console.log(`[Status] ${message}`); 
            window.webContents.send('status-update', message);
        } catch (e) {
           console.error("Failed to send status update:", e);
@@ -236,8 +236,8 @@ async function downloadAsset(assetUrl, localPath) {
         await fs.writeFile(localPath, Buffer.from(response.data));
         return true; 
     } catch (err) {
-        console.error(\`Failed to download asset: \${assetUrl.href} - \${err.message}\`);
-        sendStatus(mainWindow, \`Warning: Failed to download \${path.basename(assetUrl.pathname)} (\${err.code || err.message})\`);
+        console.error(`Failed to download asset: ${assetUrl.href} - ${err.message}`);
+        sendStatus(mainWindow, `Warning: Failed to download ${path.basename(assetUrl.pathname)} (${err.code || err.message})`);
         return false; 
     }
 }
@@ -261,15 +261,15 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
     let tempBuildDir; 
 
     try {
-        tempBuildDir = path.join(app.getPath('temp'), \`websim-build-\${Date.now()}\`);
+        tempBuildDir = path.join(app.getPath('temp'), `websim-build-${Date.now()}`);
         const appContentDir = path.join(tempBuildDir, 'app'); 
         const assetsDownloadDir = path.join(appContentDir, PACKAGED_ASSETS_DIR);
 
-        sendStatus(mainWindow, \`Using temporary build directory: \${tempBuildDir}\`);
+        sendStatus(mainWindow, `Using temporary build directory: ${tempBuildDir}`);
         await fs.ensureDir(appContentDir);
         await fs.ensureDir(assetsDownloadDir);
 
-        sendStatus(mainWindow, \`Fetching HTML from: \${targetUrl}\`);
+        sendStatus(mainWindow, `Fetching HTML from: ${targetUrl}`);
         let response;
         try {
              response = await axios.get(targetUrl, {
@@ -278,7 +278,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36' }
              });
         } catch(htmlError) {
-             throw new Error(\`Failed to fetch base HTML: \${htmlError.message}\`);
+             throw new Error(`Failed to fetch base HTML: ${htmlError.message}`);
         }
 
         const htmlContent = response.data;
@@ -309,7 +309,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
                 let filename = path.basename(assetUrl.pathname);
                  filename = filename.split('?')[0].split('#')[0];
-                 filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || \`asset_\${assetCounter++}\${path.extname(assetUrl.pathname) || '.dat'}\`;
+                 filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `asset_${assetCounter++}${path.extname(assetUrl.pathname) || '.dat'}`;
 
 
                 const localPath = path.join(assetsDownloadDir, filename);
@@ -317,7 +317,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
                 if (!assetMap.has(assetUrl.href)) {
                      assetMap.set(assetUrl.href, relativePathForHtml); 
-                     sendStatus(mainWindow, \`Queueing download: \${filename} (from \${assetUrl.origin})\`);
+                     sendStatus(mainWindow, `Queueing download: ${filename} (from ${assetUrl.origin})`);
                     downloadTasks.push(
                          downloadAsset(assetUrl, localPath).then(success => {
                              if (success) {
@@ -332,12 +332,12 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                 }
 
             } catch (urlError) {
-               console.error(\`Skipping invalid URL: '\${originalUrlStr}' - \${urlError.message}\`);
-               sendStatus(mainWindow, \`Warning: Skipping invalid URL '\${originalUrlStr}'\`);
+               console.error(`Skipping invalid URL: '${originalUrlStr}' - ${urlError.message}`);
+               sendStatus(mainWindow, `Warning: Skipping invalid URL '${originalUrlStr}'`);
             }
         });
 
-        sendStatus(mainWindow, \`Found \${assetMap.size} unique assets to download. Starting downloads...\`);
+        sendStatus(mainWindow, `Found ${assetMap.size} unique assets to download. Starting downloads...`);
         await Promise.all(downloadTasks); 
         sendStatus(mainWindow, 'Asset download process finished.');
 
@@ -346,7 +346,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         sendStatus(mainWindow, 'Modified HTML saved.');
 
         sendStatus(mainWindow, 'Creating boilerplate for packaged app...');
-        const packageMainJsContent = \`
+        const packageMainJsContent = `
             const { app, BrowserWindow } = require('electron');
             const path = require('path');
 
@@ -379,7 +379,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                     createWindow();
                 }
             });
-        \`;
+        `;
         await fs.writeFile(path.join(appContentDir, 'main.js'), packageMainJsContent);
 
         const electronVersion = require('./package.json').devDependencies.electron;
@@ -387,7 +387,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         const packageJsonContent = JSON.stringify({
             name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-'), 
             version: "1.0.0",
-            description: \`Packaged version of \${baseUrl.host}\`,
+            description: `Packaged version of ${baseUrl.host}`,
             main: "main.js",
             author: "Websim Packager",
             license: "UNLICENSED", 
@@ -405,12 +405,12 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             const installCommand = 'npm install --production'; 
              exec(installCommand, { cwd: appContentDir, timeout: 180000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`Packaged app 'npm install' error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr || error.message}\`);
-                    return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`));
+                    console.error(`Packaged app 'npm install' error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    sendStatus(mainWindow, `Error installing dependencies for package: ${stderr || error.message}`);
+                    return reject(new Error(`npm install failed in temp directory: ${stderr || error.message}`));
                 }
-                console.log(\`Packaged app 'npm install' stdout: \${stdout}\`);
+                console.log(`Packaged app 'npm install' stdout: ${stdout}`);
                 sendStatus(mainWindow, 'Packaged app dependencies installed.');
                 resolve();
             });
@@ -427,34 +427,34 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             "/\\.git($|/)",
             "/dist($|/)",
             "/temp-build-.*"
-        ].map(p => \`--ignore="\${p}"\`).join(" ");
+        ].map(p => `--ignore="${p}"`).join(" ");
 
 
         let iconArg = '';
         if (await fs.pathExists(iconPath)) {
-             iconArg = \`--icon="\${iconPath}"\`;
-             sendStatus(mainWindow, \`Using icon: \${iconPath}\`);
+             iconArg = `--icon="${iconPath}"`;
+             sendStatus(mainWindow, `Using icon: ${iconPath}`);
          } else {
-              sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon.\`);
+              sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`);
          }
 
         const finalAppName = PACKAGED_APP_NAME;
         const finalOutputDir = outputDirUserSelected;
-        const packagerCommand = \`npx electron-packager . \${finalAppName} --platform=win32 --arch=x64 --out=\${finalOutputDir} --overwrite \${iconArg} \${ignorePatterns}\`;
-        sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
+        const packagerCommand = `npx electron-packager . ${finalAppName} --platform=win32 --arch=x64 --out=${finalOutputDir} --overwrite ${iconArg} ${ignorePatterns}`;
+        sendStatus(mainWindow, `Executing: ${packagerCommand}`); 
 
         await new Promise((resolve, reject) => {
             exec(packagerCommand, { cwd: appContentDir, timeout: 300000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`electron-packager execution error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Packaging failed: \${stderr || error.message}\`);
-                    return reject(new Error(\`electron-packager command failed: \${stderr || error.message}\`));
+                    console.error(`electron-packager execution error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    sendStatus(mainWindow, `Packaging failed: ${stderr || error.message}`);
+                    return reject(new Error(`electron-packager command failed: ${stderr || error.message}`));
                 }
-                console.log(\`electron-packager stdout: \${stdout}\`);
+                console.log(`electron-packager stdout: ${stdout}`);
                  if (stderr) {
-                     console.warn(\`electron-packager stderr (warnings):\\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`);
+                     console.warn(`electron-packager stderr (warnings):\n${stderr}`);
+                     sendStatus(mainWindow, `Packaging finished with warnings (see console for details).`);
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -462,25 +462,25 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             });
         });
 
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); 
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`);
+        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`); 
+        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`);
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`);
+        sendStatus(mainWindow, `ERROR: ${errorMessage}`);
         console.error(error.stack);
         return { success: false, error: errorMessage }; 
     } finally {
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`);
+                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`);
                  await fs.remove(tempBuildDir);
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`);
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`);
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`);
+                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`);
             }
         }
         sendStatus(mainWindow, 'Process finished.');
@@ -700,11 +700,11 @@ let isProcessing = false;
 let statusUpdateUnsubscribe = null; 
 
 function addStatus(message, type = 'info') {
-    console.log(\`[Status-\${type}] \${message}\`); 
+    console.log(`[Status-${type}] ${message}`); 
 
     const line = document.createElement('div');
     line.classList.add('status-line');
-    line.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
 
     if (type === 'error') {
         line.classList.add('error');
@@ -747,14 +747,14 @@ selectDirBtn.addEventListener('click', async () => {
         const directoryPath = await window.electronAPI.selectOutputDirectory();
         if (directoryPath) {
             outputDirInput.value = directoryPath;
-            addStatus(\`Output directory selected: \${directoryPath}\`);
+            addStatus(`Output directory selected: ${directoryPath}`);
             checkFormValidityAndUpdateButton(); 
         } else {
              addStatus('Directory selection cancelled.', 'warning');
         }
     } catch (error) {
         console.error('Error selecting directory:', error);
-        addStatus(\`Error selecting directory: \${error.message}\`, 'error');
+        addStatus(`Error selecting directory: ${error.message}`, 'error');
     } finally {
          setControlsEnabled(true); 
     }
@@ -769,28 +769,28 @@ packageBtn.addEventListener('click', async () => {
     const outputDir = outputDirInput.value.trim();
 
     clearStatus(); 
-    addStatus(\`Starting process for: \${targetUrl}\`);
+    addStatus(`Starting process for: ${targetUrl}`);
     setControlsEnabled(false); 
 
     try {
         const result = await window.electronAPI.downloadAndPackage(targetUrl, outputDir);
 
         if (result.success) {
-            addStatus(\`------------------------------------------\`, 'success');
-            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
-            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
-            addStatus(\`------------------------------------------\`, 'success');
+            addStatus(`------------------------------------------`, 'success');
+            addStatus(`SUCCESS! Application packaged successfully.`, 'success');
+            addStatus(`Output Location: ${result.outputDir}`, 'success');
+            addStatus(`------------------------------------------`, 'success');
         } else {
-             addStatus(\`------------------------------------------\`, 'error');
-            addStatus(\`FAILURE: Process failed. See log above for details.\`, 'error');
-             addStatus(\`Error summary: \${result.error || 'Unknown error during packaging.'}\`, 'error');
-             addStatus(\`------------------------------------------\`, 'error');
+             addStatus(`------------------------------------------`, 'error');
+            addStatus(`FAILURE: Process failed. See log above for details.`, 'error');
+             addStatus(`Error summary: ${result.error || 'Unknown error during packaging.'}`, 'error');
+             addStatus(`------------------------------------------`, 'error');
         }
     } catch (error) {
         console.error('IPC invocation error:', error);
-        addStatus(\`------------------------------------------\`, 'error');
-        addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with main process: \${error.message}\`, 'error');
-        addStatus(\`------------------------------------------\`, 'error');
+        addStatus(`------------------------------------------`, 'error');
+        addStatus(`CRITICAL RENDERER ERROR: Failed to communicate with main process: ${error.message}`, 'error');
+        addStatus(`------------------------------------------`, 'error');
     } finally {
         setControlsEnabled(true); 
     }
