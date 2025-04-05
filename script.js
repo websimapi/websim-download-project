@@ -444,49 +444,66 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
         const iconPath = path.resolve(__dirname, 'assets', 'icon.ico'); 
 
-        const ignoreArgs = [
-             "--ignore=/node_modules/electron($|/)",
-             "--ignore=/node_modules/electron-packager($|/)",
-             "--ignore=/\\.git($|/)",
-             "--ignore=/dist($|/)",
-             "--ignore=/temp-build-.*",
-             // Don't ignore the lockfile now, packager might use it
-             //"--ignore=/package-lock\\.json" 
-        ];
-        const ignoreString = ignoreArgs.join(" "); 
-
-
+        // --- Start of changes for robust quoting ---
         let iconArg = '';
         try {
             if (await fs.pathExists(iconPath)) {
-                 iconArg = \`--icon="\${iconPath.replace(/\\\\/g, '/')}"\`; 
-                 sendStatus(mainWindow, \`Using icon: \${iconPath}\`); 
+                 // Quote the icon path for the shell command
+                 // Using JSON.stringify is a robust way to escape for shell
+                 iconArg = `--icon=${JSON.stringify(iconPath)}`;
+                 sendStatus(mainWindow, `Using icon: ${iconPath}`);
              } else {
-                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon.\`); 
+                  sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`);
              }
         } catch(iconError) {
-             sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`); 
+             sendStatus(mainWindow, `Warning: Error checking for icon file: ${iconError.message}`);
         }
 
+        // Quote the output directory path for the shell command
+        const quotedOutputDir = JSON.stringify(outputDirUserSelected);
 
-        const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = outputDirUserSelected.replace(/\\\\/g, '/'); 
+        // Define ignore patterns as an array for clarity
+        const ignorePatterns = [
+            '/node_modules/electron($|/)', // Ignore electron itself in node_modules
+            '/node_modules/electron-packager($|/)', // Ignore packager
+            // Keep essential electron build deps if needed, but prune others
+            '/node_modules/.bin($|/)',
+            '/node_modules/\\.cache($|/)' ,
+            '\\.git($|/)' ,
+            '/dist($|/)' ,
+            '/temp-build-.*',
+            'README\\.md',
+            '\\.env'
+             // We DO need package-lock.json in the temp dir for npm install
+             // '/package-lock\\.json'
+        ];
+        // Construct the ignore arguments string, quoting each pattern
+        const ignoreArgsString = ignorePatterns.map(pattern => `--ignore=${JSON.stringify(pattern)}`).join(' ');
+
         // Use npx to ensure electron-packager is found
-        const packagerCommand = \`npx electron-packager . "\${finalAppName}" --platform=win32 --arch=x64 --out="\${finalOutputDir}" --overwrite \${iconArg} \${ignoreString}\`; 
-        sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
+        // Ensure finalAppName is quoted if it could contain spaces (though unlikely here)
+        // Use properly quoted paths for --out and --icon
+        const packagerCommand = `npx electron-packager . ${JSON.stringify(PACKAGED_APP_NAME)} --platform=win32 --arch=x64 --out=${quotedOutputDir} --overwrite ${iconArg} ${ignoreArgsString}`;
+        // --- End of changes for robust quoting ---
+
+        sendStatus(mainWindow, `Executing: ${packagerCommand}`);
 
         await new Promise((resolve, reject) => {
+            // Pass the command directly to exec, shell quoting is handled above
             exec(packagerCommand, { cwd: appContentDir, timeout: 450000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`electron-packager execution error: \${error.message}\`); 
-                    console.error(\`stderr: \${stderr}\`); 
-                    sendStatus(mainWindow, \`Packaging failed: \${stderr || error.message}\`); 
-                    return reject(new Error(\`electron-packager command failed: \${stderr || error.message}\`)); 
+                    console.error(`electron-packager execution error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    // Send the actual stderr which likely contains the specific error
+                    sendStatus(mainWindow, `Packaging failed: ${stderr || error.message}`);
+                    // Reject with a more specific error message including stderr if available
+                    return reject(new Error(`electron-packager command failed: ${stderr || error.message}`));
                 }
-                console.log(\`electron-packager stdout: \${stdout}\`); 
+                console.log(`electron-packager stdout: ${stdout}`);
                  if (stderr) {
-                     console.warn(\`electron-packager stderr (warnings):\\n\${stderr}\`); 
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`); 
+                     console.warn(`electron-packager stderr (warnings):\\n${stderr}`);
+                     // Avoid overwriting success message with warnings unless critical
+                     sendStatus(mainWindow, `Packaging finished with warnings (check console).`);
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -494,32 +511,31 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             });
         });
 
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); 
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`); 
+        // Adjust final path calculation if app name changes
+        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`);
+        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`);
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`); 
+        sendStatus(mainWindow, `ERROR: ${errorMessage}`);
         console.error(error.stack);
-        return { success: false, error: errorMessage }; 
+        return { success: false, error: errorMessage };
     } finally {
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`); 
+                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`);
                  await fs.remove(tempBuildDir);
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`); 
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`); 
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`);
+                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`);
             }
         }
         sendStatus(mainWindow, 'Process finished.');
     }
 });
-
-    `);
 
     // Add preload.js (Electron preload script)
     projectFolder.file("preload.js", `
@@ -703,7 +719,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         .status-line.warning {
             color: #856404; 
             background-color: #fff3cd; 
-            border-left: 3px solid var(--warning-color); /* Corrected variable name */
+            border-left: 3px solid(var(--warning-color)); 
         }
         .status-line.success {
             color: var(--success-color);
