@@ -5,570 +5,6 @@ const downloadBtn = document.getElementById('downloadBtn');
 
 downloadBtn.addEventListener('click', async () => {
     const zip = new JSZip();
-
-    // Add README.md
-    zip.file("README.md", `
-# Websim Downloader & Packager
-
-This Node.js Electron application allows you to fetch the client-side source code (HTML, CSS, JavaScript, assets referenced in the HTML) of any public 'websim' URL and package it into a standalone executable (.exe for Windows).
-
-**Disclaimer:** Please ensure you have the necessary permissions to download and package the content from the target URL. Respect copyright and terms of service. This tool is for educational or legitimate archival purposes only.
-
-## Features
-
-*   Fetches HTML, CSS, JavaScript, and assets linked within the HTML.
-*   Packages the downloaded client-side code into an Electron application.
-*   Uses Electron Packager to create a distributable executable (.exe).
-
-## Prerequisites
-
-*   [Node.js](https://nodejs.org/) (which includes npm)
-*   [Git](https://git-scm.com/) (optional, but recommended for cloning)
-
-## Setup
-
-1.  **Clone the repository (or extract the zip):**
-    \`\`\`bash
-    git clone <repository_url> # Or extract the downloaded zip file
-    cd websim-downloader-packager
-    \`\`\`
-
-2.  **Install dependencies:**
-    \`\`\`bash
-    npm install
-    \`\`\`
-
-## Usage
-
-1.  **Run the Electron application:**
-    \`\`\`bash
-    npm start
-    \`\`\`
-
-2.  **Enter the Websim URL:** In the application window, enter the full URL of the websim you want to download (e.g., \`https://example.com/my-websim/\`).
-
-3.  **Choose an Output Directory:** Select a folder where the packaged executable will be saved.
-
-4.  **Click "Download & Package":** The application will:
-    *   Fetch the HTML content of the provided URL.
-    *   Attempt to download linked CSS, JS, and other assets (images, etc.) found within the HTML.
-    *   Create a temporary Electron project structure.
-    *   Inject the downloaded content into the Electron app's main window.
-    *   Use \`electron-packager\` to build the executable.
-
-5.  **Find the Executable:** Once complete, navigate to the output directory you selected. Inside, you'll find a folder (usually named something like \`websim-packaged-win32-x64\`) containing the \`.exe\` file.
-
-## How it Works
-
-1.  **Fetching:** Uses Node.js's \`https\` module or a library like \`axios\` or \`node-fetch\` to download the initial HTML. It then parses the HTML (using a library like \`cheerio\`) to find links (\`<link>\`, \`<script>\`, \`<img>\`, etc.). It attempts to download these resources relative to the base URL.
-2.  **Packaging:**
-    *   A basic Electron application template is included within this project.
-    *   The downloaded HTML (potentially modified to fix relative paths) becomes the main content loaded into Electron's \`BrowserWindow\`.
-    *   Downloaded assets (CSS, JS, images) are saved into a designated directory within the temporary Electron project.
-    *   \`electron-packager\` is invoked via a Node.js script to bundle the Electron app and its downloaded assets into an executable format for the target platform (Windows .exe in this case).
-
-## Important Considerations & Limitations
-
-*   **Dynamic Content:** This tool primarily captures the *static* client-side code as served by the web server *at the time of download*. It might not capture content loaded dynamically via JavaScript after the initial page load, especially if that content relies on complex API interactions or server-side logic that cannot be replicated offline.
-*   **Complex SPAs:** Single Page Applications (SPAs) built with frameworks like React, Angular, or Vue might be difficult to package correctly, as their routing and state management often rely on server interaction or specific build configurations.
-*   **Server-Side Dependencies:** The packaged application will *only* contain the client-side code. Any functionality that requires communication with the original web server (e.g., fetching data, user authentication) will likely not work in the offline packaged version.
-*   **Path Issues:** Relative paths in CSS, JavaScript, or HTML might need careful handling during the fetching and packaging process to ensure they work correctly within the Electron environment. The tool attempts to manage this, but complex cases might require manual adjustments.
-*   **Cross-Origin Restrictions:** Downloading resources from different domains might be restricted by browser security policies (CORS) if attempted directly from the initial client-side fetch. The Node.js backend fetch handles this more robustly.
-*   **Build Size:** Including all assets can significantly increase the size of the final executable.
-
-## Development (Contributing)
-
-1.  Fork the repository.
-2.  Create a new branch (\`git checkout -b feature/your-feature\`).
-3.  Make your changes.
-4.  Install development dependencies if needed (\`npm install --save-dev <package>\`).
-5.  Test thoroughly.
-6.  Commit your changes (\`git commit -am 'Add some feature'\`).
-7.  Push to the branch (\`git push origin feature/your-feature\`).
-8.  Create a new Pull Request.
-
-## License
-
-[MIT License](LICENSE) (You'll need to add a LICENSE file - a standard MIT license is common)
-    `);
-
-    // Add package.json
-    zip.file("package.json", `{
-  "name": "websim-downloader-packager",
-  "version": "1.0.0",
-  "description": "Fetches and packages websim client code into an Electron executable.",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron .",
-    "package": "electron-packager . WebsimPackaged --platform=win32 --arch=x64 --out=dist/ --overwrite --icon=assets/icon.ico",
-    "package-interactive": "node package-script.js"
-  },
-  "keywords": [
-    "electron",
-    "websim",
-    "downloader",
-    "packager"
-  ],
-  "author": "Your Name/AI",
-  "license": "MIT",
-  "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-packager": "^17.1.2"
-  },
-  "dependencies": {
-    "axios": "^1.6.5",
-    "cheerio": "^1.0.0-rc.12",
-    "fs-extra": "^11.2.0"
-  }
-}`);
-
-    // Add main.js (Electron main process)
-    zip.file("main.js", `
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path = require('path');
-const fs = require('fs-extra'); // Use fs-extra for easier directory handling
-const axios = require('axios');
-const cheerio = require('cheerio');
-const { URL } = require('url'); // Standard Node.js URL module
-const { exec } = require('child_process'); // To run electron-packager
-
-let mainWindow;
-
-function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            contextIsolation: true, // Recommended for security
-            nodeIntegration: false // Keep false
-        }
-    });
-
-    mainWindow.loadFile('index.html');
-
-    // Optional: Open DevTools
-    // mainWindow.webContents.openDevTools();
-}
-
-app.whenReady().then(() => {
-    createWindow();
-
-    app.on('activate', function () {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
-});
-
-app.on('window-all-closed', function () {
-    if (process.platform !== 'darwin') app.quit();
-});
-
-// --- IPC Handlers ---
-
-ipcMain.handle('select-output-directory', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory']
-    });
-    if (result.canceled || result.filePaths.length === 0) {
-        return null; // Or throw an error
-    }
-    return result.filePaths[0];
-});
-
-ipcMain.handle('download-and-package', async (event, targetUrl, outputDir) => {
-    const tempDir = path.join(app.getPath('temp'), \`websim-package-\${Date.now()}\`);
-    const appDir = path.join(tempDir, 'app'); // Directory for the actual app content
-    const assetsDir = path.join(appDir, 'downloaded_assets');
-
-    try {
-        sendStatus(mainWindow, 'Starting download...');
-        await fs.ensureDir(appDir);
-        await fs.ensureDir(assetsDir);
-
-        sendStatus(mainWindow, \`Fetching HTML from \${targetUrl}...\`);
-        const response = await axios.get(targetUrl, { responseType: 'text' });
-        const htmlContent = response.data;
-        const baseUrl = new URL(targetUrl);
-
-        sendStatus(mainWindow, 'Parsing HTML and downloading assets...');
-        const $ = cheerio.load(htmlContent);
-        const downloadPromises = [];
-        const assetMap = new Map(); // To track original vs local paths
-
-        // --- Basic Asset Downloading (CSS, JS, Images) ---
-        // This is simplified. A real implementation needs more robust path handling,
-        // error checking, and potentially CSS parsing for background images.
-
-        $('link[rel="stylesheet"], script[src], img[src]').each((index, element) => {
-            const $el = $(element);
-            let srcAttr = 'href';
-            if ($el.is('script') || $el.is('img')) {
-                srcAttr = 'src';
-            }
-            const originalUrl = $el.attr(srcAttr);
-
-            if (originalUrl) {
-                try {
-                    const assetUrl = new URL(originalUrl, baseUrl.href); // Resolve relative URLs
-                    const assetFilename = path.basename(assetUrl.pathname) || \`asset_\${index}\`; // Basic filename extraction
-                    const localPath = path.join(assetsDir, assetFilename);
-                    const relativePath = path.relative(appDir, localPath).replace(/\\\\/g, '/'); // Path relative to index.html
-
-                    // Avoid re-downloading the same asset
-                    if (!assetMap.has(assetUrl.href)) {
-                         sendStatus(mainWindow, \`Downloading: \${assetUrl.href}\`);
-                        downloadPromises.push(
-                            axios.get(assetUrl.href, { responseType: 'arraybuffer' })
-                                .then(assetResponse => fs.writeFile(localPath, Buffer.from(assetResponse.data)))
-                                .catch(err => {
-                                    console.error(\`Failed to download asset: \${assetUrl.href}\`, err.message);
-                                    sendStatus(mainWindow, \`Warning: Failed to download \${assetUrl.href}\`);
-                                }) // Log errors but continue
-                        );
-                        assetMap.set(assetUrl.href, relativePath);
-                        $el.attr(srcAttr, relativePath); // Update the HTML to point to the local file
-                    } else {
-                         // If already downloaded, just update the path in HTML
-                         $el.attr(srcAttr, assetMap.get(assetUrl.href));
-                    }
-
-                } catch (e) {
-                   console.error(\`Skipping invalid URL: \${originalUrl}\`, e);
-                   sendStatus(mainWindow, \`Warning: Skipping invalid URL \${originalUrl}\`);
-                }
-            }
-        });
-
-        await Promise.all(downloadPromises);
-        sendStatus(mainWindow, 'Asset download complete.');
-
-        // Save the modified HTML
-        const finalHtmlContent = $.html();
-        await fs.writeFile(path.join(appDir, 'index.html'), finalHtmlContent);
-
-        // --- Prepare Electron Boilerplate ---
-        sendStatus(mainWindow, 'Creating Electron boilerplate...');
-        // Basic main.js for the packaged app
-        const packageMainJs = \`
-            const { app, BrowserWindow } = require('electron');
-            const path = require('path');
-
-            function createWindow () {
-            const mainWindow = new BrowserWindow({
-                width: 1024, // Or load dimensions from fetched site?
-                height: 768,
-                webPreferences: {
-                 // Consider security implications - sandbox: true is safer
-                 // preload: path.join(__dirname, 'preload.js') // If you need a preload script
-                 nodeIntegration: false, // Generally safer
-                 contextIsolation: true, // Generally safer
-                 // Allow loading local file resources
-                 webSecurity: false // Be cautious with this! Only use if necessary for local file loading.
-                }
-            });
-
-            // Load the downloaded index.html
-            mainWindow.loadFile(path.join(__dirname, 'index.html'));
-            }
-
-            app.whenReady().then(createWindow);
-
-            app.on('window-all-closed', () => {
-            if (process.platform !== 'darwin') {
-                app.quit();
-            }
-            });
-
-            app.on('activate', () => {
-            if (BrowserWindow.getAllWindows().length === 0) {
-                createWindow();
-            }
-            });
-        \`;
-        await fs.writeFile(path.join(appDir, 'main.js'), packageMainJs);
-
-        // Basic package.json for the packaged app
-        const packageJson = \`{
-            "name": "packaged-websim",
-            "version": "1.0.0",
-            "main": "main.js",
-            "dependencies": {},
-             "devDependencies": {
-                "electron": "^28.0.0"
-            }
-        }\`;
-        await fs.writeFile(path.join(appDir, 'package.json'), packageJson);
-
-        // --- Package the App ---
-        sendStatus(mainWindow, 'Packaging application with electron-packager...');
-
-        // Ensure node_modules are installed for the *packaged* app before packaging
-        // This is crucial for electron-packager to find the 'electron' dependency.
-        // We run 'npm install' within the temporary app directory.
-        await new Promise((resolve, reject) => {
-            sendStatus(mainWindow, 'Installing dependencies for packaged app...');
-            exec('npm install', { cwd: appDir }, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(\`Packaged app npm install error: \${stderr}\`);
-                    sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr}\`);
-                    return reject(new Error(\`npm install failed: \${stderr}\`));
-                }
-                console.log(\`Packaged app npm install stdout: \${stdout}\`);
-                sendStatus(mainWindow, 'Packaged app dependencies installed.');
-                resolve();
-            });
-        });
-
-
-        // Use electron-packager (adjust path to executable if necessary)
-        // Ensure electron-packager is installed globally or use npx
-        const packagerCommand = \`npx electron-packager .\ --platform=win32 --arch=x64 --out="${outputDir}" --overwrite\`; // Use outputDir
-
-        await new Promise((resolve, reject) => {
-            exec(packagerCommand, { cwd: appDir }, (error, stdout, stderr) => { // Run packager from within appDir
-                if (error) {
-                    console.error(\`electron-packager error: \${stderr}\`);
-                    sendStatus(mainWindow, \`Packaging failed: \${stderr}\`);
-                    return reject(new Error(\`electron-packager failed: \${stderr}\`));
-                }
-                console.log(\`electron-packager output: \${stdout}\`);
-                sendStatus(mainWindow, 'Packaging successful!');
-                resolve();
-            });
-        });
-
-        sendStatus(mainWindow, \`Packaging complete. Check \${outputDir}\`);
-        return { success: true, outputDir: outputDir };
-
-    } catch (error) {
-        console.error("Error during download/packaging:", error);
-        sendStatus(mainWindow, \`Error: \${error.message}\`);
-        // Attempt to clean up temp directory on error
-        await fs.remove(tempDir).catch(cleanupError => console.error("Temp dir cleanup error:", cleanupError));
-        return { success: false, error: error.message };
-    } finally {
-         // Optional: Clean up temp directory even on success, unless needed for debugging
-         // await fs.remove(tempDir).catch(cleanupError => console.error("Temp dir cleanup error:", cleanupError));
-         console.log("Process finished. Temp directory:", tempDir); // Log temp dir path for debugging if not deleting
-    }
-});
-
-// Function to send status updates to the renderer process
-function sendStatus(window, message) {
-    if (window && !window.isDestroyed() && window.webContents) {
-       try {
-           window.webContents.send('status-update', message);
-       } catch (e) {
-          console.error("Failed to send status update:", e);
-       }
-    }
-}
-    `);
-
-    // Add preload.js (Electron preload script)
-    zip.file("preload.js", `
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('electronAPI', {
-    selectOutputDirectory: () => ipcRenderer.invoke('select-output-directory'),
-    downloadAndPackage: (url, outputDir) => ipcRenderer.invoke('download-and-package', url, outputDir),
-    onStatusUpdate: (callback) => ipcRenderer.on('status-update', (_event, value) => callback(value))
-});
-
-console.log('Preload script loaded.');
-    `);
-
-    // Add index.html (Electron renderer process UI)
-    zip.file("index.html", `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
-    <title>Websim Downloader & Packager</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f0f0f0; }
-        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        h1 { color: #333; margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; color: #555; font-weight: bold; }
-        input[type="url"], input[type="text"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-        button { padding: 10px 20px; margin-right: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; transition: background-color 0.2s ease; }
-        button#selectDirBtn { background-color: #6c757d; color: white; }
-        button#selectDirBtn:hover { background-color: #5a6268; }
-        button#packageBtn { background-color: #007bff; color: white; }
-        button#packageBtn:hover { background-color: #0056b3; }
-        button:disabled { background-color: #cccccc; cursor: not-allowed; }
-        #status { margin-top: 20px; padding: 15px; background-color: #e9ecef; border: 1px solid #ced4da; border-radius: 4px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; max-height: 200px; overflow-y: auto; }
-        .dir-selection { display: flex; align-items: center; margin-bottom: 15px; }
-        .dir-selection input[type="text"] { flex-grow: 1; margin: 0 10px 0 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Websim Downloader & Packager</h1>
-
-        <label for="urlInput">Websim URL:</label>
-        <input type="url" id="urlInput" placeholder="https://example.com/my-websim/" required>
-
-        <label for="outputDirInput">Output Directory for Packaged App:</label>
-        <div class="dir-selection">
-            <input type="text" id="outputDirInput" placeholder="Select directory..." readonly required>
-            <button id="selectDirBtn">Browse...</button>
-        </div>
-
-        <button id="packageBtn" disabled>Download & Package</button>
-
-        <div id="status">Status updates will appear here...</div>
-    </div>
-
-    <script src="./renderer.js"></script>
-</body>
-</html>
-    `);
-
-    // Add renderer.js (Electron renderer process logic)
-    zip.file("renderer.js", `
-console.log('Renderer script loaded.');
-
-const urlInput = document.getElementById('urlInput');
-const outputDirInput = document.getElementById('outputDirInput');
-const selectDirBtn = document.getElementById('selectDirBtn');
-const packageBtn = document.getElementById('packageBtn');
-const statusDiv = document.getElementById('status');
-
-function addStatus(message) {
-    console.log("Status:", message); // Also log to console
-    statusDiv.textContent += message + '\\n';
-    statusDiv.scrollTop = statusDiv.scrollHeight; // Auto-scroll
-}
-
-function checkFormValidity() {
-    packageBtn.disabled = !(urlInput.checkValidity() && outputDirInput.value);
-}
-
-selectDirBtn.addEventListener('click', async () => {
-    addStatus('Opening directory selector...');
-    try {
-        const directoryPath = await window.electronAPI.selectOutputDirectory();
-        if (directoryPath) {
-            outputDirInput.value = directoryPath;
-            addStatus(\`Output directory selected: \${directoryPath}\`);
-            checkFormValidity();
-        } else {
-             addStatus('Directory selection cancelled.');
-        }
-    } catch (error) {
-        console.error('Error selecting directory:', error);
-        addStatus(\`Error selecting directory: \${error.message}\`);
-    }
-});
-
-packageBtn.addEventListener('click', async () => {
-    const targetUrl = urlInput.value;
-    const outputDir = outputDirInput.value;
-
-    if (!targetUrl || !outputDir) {
-        addStatus('Please provide a valid URL and select an output directory.');
-        return;
-    }
-
-    statusDiv.textContent = ''; // Clear previous status
-    addStatus('Starting process...');
-    packageBtn.disabled = true;
-    selectDirBtn.disabled = true; // Disable browse button during operation
-    urlInput.disabled = true; // Disable input field during operation
-
-
-    try {
-        const result = await window.electronAPI.downloadAndPackage(targetUrl, outputDir);
-        if (result.success) {
-            addStatus(\`\\n-----\\nProcess completed successfully!\\nPackaged app saved in: \${result.outputDir}\`);
-        } else {
-            addStatus(\`\\n-----\\nProcess failed: \${result.error}\`);
-        }
-    } catch (error) {
-        console.error('Error during download/package process:', error);
-        addStatus(\`\\n-----\\nAn unexpected error occurred: \${error.message}\`);
-    } finally {
-        packageBtn.disabled = false; // Re-enable button
-         selectDirBtn.disabled = false;
-         urlInput.disabled = false;
-        checkFormValidity(); // Re-check validity (though likely enabled)
-    }
-});
-
-// Listen for status updates from the main process
-window.electronAPI.onStatusUpdate((message) => {
-    addStatus(message);
-});
-
-// Initial check and listener for input changes
-urlInput.addEventListener('input', checkFormValidity);
-addStatus('Ready. Enter URL and select output directory.'); // Initial status message
-
-    `);
-
-    // Add a placeholder icon (important for electron-packager)
-    // Creating a simple SVG icon inline
-    const svgIcon = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256">
-  <rect width="100" height="100" rx="20" ry="20" fill="#007bff"/>
-  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="60" font-family="sans-serif" fill="#ffffff">W</text>
-</svg>`;
-    // Electron packager needs a .ico for windows. Generating a real .ico in JSZip is complex.
-    // We'll add a note in the README and provide an SVG. The user needs to convert it or provide their own .ico.
-    zip.file("assets/icon.svg", svgIcon);
-    // Add a note about the icon in the README
-     zip.file("README.md", (content) => {
-        return content + `
-
-## Icon
-
-An \`icon.svg\` file is included in the \`assets\` directory. For Windows packaging (\`.exe\`), \`electron-packager\` requires an \`.ico\` file. You will need to:
-
-1.  **Convert \`assets/icon.svg\` to \`assets/icon.ico\`** using an online converter or image editing software.
-2.  **OR** replace \`assets/icon.svg\` with your own \`icon.ico\` file (ensure it's named \`icon.ico\` and placed in the \`assets\` folder).
-
-The packaging script (\`package.json\`'s \`package\` script) specifically looks for \`assets/icon.ico\`. If it's not found, packaging might fail or use a default icon.
-`;
-    });
-     zip.folder("assets"); // Ensure assets folder exists even if only SVG is added
-
-    // Add .gitignore
-     zip.file(".gitignore", `
-node_modules/
-dist/
-temp-*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.zip
-*.exe
-*.app
-*.dmg
-*.pkg
-
-# Specific to packaged app temp build
-app/node_modules/
-app/package-lock.json
-`);
-
-
-    // Generate the zip file and trigger download
-    zip.generateAsync({ type: "blob" })
-        .then(function(content) {
-            saveAs(content, "websim-downloader-packager.zip");
-        });
-});
-
-
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-
-const downloadBtn = document.getElementById('downloadBtn');
-
-downloadBtn.addEventListener('click', async () => {
-    const zip = new JSZip();
     const projectFolderName = "websim-downloader-packager";
     const projectFolder = zip.folder(projectFolderName);
 
@@ -594,35 +30,35 @@ This Node.js Electron application allows you to fetch the client-side source cod
 
 ## Setup
 
-1.  **Extract the zip file:** Unzip the downloaded \`websim-downloader-packager.zip\` file.
+1.  **Extract the zip file:** Unzip the downloaded `websim-downloader-packager.zip` file.
 
 2.  **Navigate to the project directory:**
-    \`\`\`bash
+    ```bash
     cd websim-downloader-packager
-    \`\`\`
+    ```
 
 3.  **Install dependencies:** This command installs Electron, Electron Packager, and other necessary libraries.
-    \`\`\`bash
+    ```bash
     npm install
-    \`\`\`
+    ```
     *Note: This might take a few minutes, especially the first time.*
 
-4.  **(Windows Only) Prepare Icon:** The packager needs an \`.ico\` file for the executable icon.
-    *   An \`icon.svg\` is provided in the \`assets\` folder.
-    *   **You must convert \`assets/icon.svg\` to \`assets/icon.ico\`**. You can use online converters (search for "svg to ico converter") or image editing software.
-    *   Place the resulting \`icon.ico\` file inside the \`assets\` folder. If you skip this, packaging might fail or use a default icon.
+4.  **(Windows Only) Prepare Icon:** The packager needs an `.ico` file for the executable icon.
+    *   An `icon.svg` is provided in the `assets` folder.
+    *   **You must convert `assets/icon.svg` to `assets/icon.ico`**. You can use online converters (search for "svg to ico converter") or image editing software.
+    *   Place the resulting `icon.ico` file inside the `assets` folder. If you skip this, packaging might fail or use a default icon.
 
 ## Usage
 
 1.  **Run the Electron application:**
-    \`\`\`bash
+    ```bash
     npm start
-    \`\`\`
+    ```
     This will open the application window.
 
-2.  **Enter the Websim URL:** In the application window, enter the full URL of the websim you want to download (e.g., \`https://example.com/my-websim/\`). Make sure it's a publicly accessible URL.
+2.  **Enter the Websim URL:** In the application window, enter the full URL of the websim you want to download (e.g., `https://example.com/my-websim/`). Make sure it's a publicly accessible URL.
 
-3.  **Choose an Output Directory:** Click the "Browse..." button and select a folder where the final packaged application (the folder containing the \`.exe\`) will be saved.
+3.  **Choose an Output Directory:** Click the "Browse..." button and select a folder where the final packaged application (the folder containing the `.exe`) will be saved.
 
 4.  **Click "Download & Package":** The application will now perform the following steps (status updates will appear in the app window):
     *   Fetch the HTML content from the URL.
@@ -632,46 +68,46 @@ This Node.js Electron application allows you to fetch the client-side source cod
     *   Create a temporary Electron project structure.
     *   Inject the downloaded content and the modified HTML into this structure.
     *   Install Electron within the temporary structure (required by the packager).
-    *   Use \`electron-packager\` to build the final executable for Windows (x64).
+    *   Use `electron-packager` to build the final executable for Windows (x64).
 
-5.  **Find the Executable:** Once the process completes successfully, navigate to the output directory you selected in step 3. Inside, you should find a folder named something like \`packaged-websim-win32-x64\`. This folder contains your standalone \`.exe\` file and other necessary resources. Double-click the \`.exe\` to run the packaged websim.
+5.  **Find the Executable:** Once the process completes successfully, navigate to the output directory you selected in step 3. Inside, you should find a folder named something like `packaged-websim-win32-x64`. This folder contains your standalone `.exe` file and other necessary resources. Double-click the `.exe` to run the packaged websim.
 
 ## How it Works
 
-1.  **Fetching (main.js):** Uses the \`axios\` library to download the initial HTML from the target URL. It then uses \`cheerio\` (a server-side jQuery-like library) to parse the HTML structure. It identifies \`<link href="...">\`, \`<script src="...">\`, and \`<img src="...">\` tags (and potentially others). For each asset found, it resolves its full URL (handling relative paths like \`/css/style.css\` or \`../images/logo.png\`) and downloads it using \`axios\`.
-2.  **Local Path Rewriting (main.js):** As assets are downloaded, the corresponding \`href\` or \`src\` attributes in the HTML are modified to point to the local file path within the package (e.g., \`downloaded_assets/style.css\`).
+1.  **Fetching (main.js):** Uses the `axios` library to download the initial HTML from the target URL. It then uses `cheerio` (a server-side jQuery-like library) to parse the HTML structure. It identifies `<link href="...">`, `<script src="...">`, and `<img src="...">` tags (and potentially others). For each asset found, it resolves its full URL (handling relative paths like `/css/style.css` or `../images/logo.png`) and downloads it using `axios`.
+2.  **Local Path Rewriting (main.js):** As assets are downloaded, the corresponding `href` or `src` attributes in the HTML are modified to point to the local file path within the package (e.g., `downloaded_assets/style.css`).
 3.  **Temporary Electron Project Creation (main.js):** A temporary folder is created. Inside it, a basic Electron project is scaffolded:
-    *   The modified HTML is saved as \`index.html\`.
-    *   Downloaded assets are placed in a \`downloaded_assets\` subfolder.
-    *   A minimal \`main.js\` (the Electron main process script for the *packaged* app) is created. This script simply creates a browser window and loads the local \`index.html\`.
-    *   A minimal \`package.json\` defining the packaged app's structure and Electron dependency is created.
-4.  **Dependency Installation for Package (main.js):** Critically, \`npm install\` is run *inside the temporary project directory*. This installs Electron there, which \`electron-packager\` needs to bundle.
-5.  **Packaging (main.js):** The Node.js \`child_process.exec\` function is used to run the \`electron-packager\` command. This command takes the temporary project directory as input and builds the distributable application (including the Node.js runtime, Electron framework, and all the downloaded websim code/assets) into the specified output directory.
+    *   The modified HTML is saved as `index.html`.
+    *   Downloaded assets are placed in a `downloaded_assets` subfolder.
+    *   A minimal `main.js` (the Electron main process script for the *packaged* app) is created. This script simply creates a browser window and loads the local `index.html`.
+    *   A minimal `package.json` defining the packaged app's structure and Electron dependency is created.
+4.  **Dependency Installation for Package (main.js):** Critically, `npm install` is run *inside the temporary project directory*. This installs Electron there, which `electron-packager` needs to bundle.
+5.  **Packaging (main.js):** The Node.js `child_process.exec` function is used to run the `electron-packager` command. This command takes the temporary project directory as input and builds the distributable application (including the Node.js runtime, Electron framework, and all the downloaded websim code/assets) into the specified output directory.
 6.  **Interface (index.html, renderer.js, preload.js):** The user interface you interact with is also an Electron app.
-    *   \`index.html\`: Defines the layout (URL input, directory selection, button, status area).
-    *   \`renderer.js\`: Handles button clicks, calls backend functions via the preload script, and updates the status area.
-    *   \`preload.js\`: Securely exposes specific Node.js/Electron functions (defined in \`main.js\` via \`ipcMain.handle\`) to the renderer process (\`renderer.js\`) using \`contextBridge\`. This is the secure way to communicate between the frontend UI and the backend Node.js capabilities in modern Electron.
+    *   `index.html`: Defines the layout (URL input, directory selection, button, status area).
+    *   `renderer.js`: Handles button clicks, calls backend functions via the preload script, and updates the status area.
+    *   `preload.js`: Securely exposes specific Node.js/Electron functions (defined in `main.js` via `ipcMain.handle`) to the renderer process (`renderer.js`) using `contextBridge`. This is the secure way to communicate between the frontend UI and the backend Node.js capabilities in modern Electron.
 
 ## Important Considerations & Limitations
 
 *   **Dynamic Content:** This tool primarily captures the *static* client-side code as served by the web server *at the time of download*. It might not capture content loaded dynamically via JavaScript after the initial page load, especially if that content relies on complex API interactions or server-side logic that cannot be replicated offline. The packaged app runs the downloaded JavaScript, but if that JS tries to fetch data from its original server, it will likely fail.
 *   **Complex SPAs:** Single Page Applications (SPAs) built with frameworks like React, Angular, or Vue might be difficult to package correctly. Their routing, state management, and build processes often rely on server interaction or specific configurations not easily replicated by simple asset downloading.
 *   **Server-Side Dependencies:** The packaged application will *only* contain the client-side code. Any functionality that requires communication with the original web server (e.g., fetching data from an API, user authentication, database interactions) will **not** work in the offline packaged version unless the original websim was designed to be fully functional offline.
-*   **Path Issues:** While the tool attempts to handle relative paths for common assets (CSS, JS, images), complex cases (e.g., paths generated dynamically in JS, paths within CSS \`url()\`) might not be rewritten correctly, leading to broken styles or images in the packaged app.
-*   **Asset Discovery:** The current implementation only looks for assets in specific tags (\`link[rel=stylesheet]\`, \`script[src]\`, \`img[src]\`). Assets loaded via other means (e.g., JavaScript fetch, CSS \`@import\`, inline styles with \`url()\`) might not be downloaded.
+*   **Path Issues:** While the tool attempts to handle relative paths for common assets (CSS, JS, images), complex cases (e.g., paths generated dynamically in JS, paths within CSS `url()`) might not be rewritten correctly, leading to broken styles or images in the packaged app.
+*   **Asset Discovery:** The current implementation only looks for assets in specific tags (`link[rel=stylesheet]`, `script[src]`, `img[src]`). Assets loaded via other means (e.g., JavaScript fetch, CSS `@import`, inline styles with `url()`) might not be downloaded.
 *   **Cross-Origin Resources:** The Node.js backend fetch can download resources from different domains, bypassing browser CORS limitations that would apply if fetching directly from the renderer.
 *   **Build Size:** Including all assets can significantly increase the size of the final executable. Electron itself adds a considerable base size (~100MB+).
-*   **Security (\`webSecurity: false\`):** The packaged app's \`main.js\` includes \`webSecurity: false\`. This is often necessary to allow the local \`index.html\` file to load other local resources (\`file://...\`) like the downloaded assets. However, **disabling web security can have security implications** if the downloaded code itself contains vulnerabilities or attempts malicious actions. Use with caution and only package trusted content.
+*   **Security (`webSecurity: false`):** The packaged app's `main.js` includes `webSecurity: false`. This is often necessary to allow the local `index.html` file to load other local resources (`file://...`) like the downloaded assets. However, **disabling web security can have security implications** if the downloaded code itself contains vulnerabilities or attempts malicious actions. Use with caution and only package trusted content.
 
 ## Development (Contributing)
 
 1.  Fork the repository.
-2.  Create a new branch (\`git checkout -b feature/your-feature\`).
+2.  Create a new branch (`git checkout -b feature/your-feature`).
 3.  Make your changes.
-4.  Install development dependencies if needed (\`npm install --save-dev <package>\`).
-5.  Test thoroughly (\`npm start\` to run the downloader app).
-6.  Commit your changes (\`git commit -am 'Add some feature'\`).
-7.  Push to the branch (\`git push origin feature/your-feature\`).
+4.  Install development dependencies if needed (`npm install --save-dev <package>`).
+5.  Test thoroughly (`npm start` to run the downloader app).
+6.  Commit your changes (`git commit -am 'Add some feature'`).
+7.  Push to the branch (`git push origin feature/your-feature`).
 8.  Create a new Pull Request.
 
 ## License
@@ -842,16 +278,16 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
     try {
         // --- 1. Setup Directories ---
-        tempBuildDir = path.join(app.getPath('temp'), \`websim-build-\${Date.now()}\`);
+        tempBuildDir = path.join(app.getPath('temp'), `websim-build-${Date.now()}`);
         const appContentDir = path.join(tempBuildDir, 'app'); // Directory for the actual app content to be packaged
         const assetsDownloadDir = path.join(appContentDir, PACKAGED_ASSETS_DIR);
 
-        sendStatus(mainWindow, \`Using temporary build directory: \${tempBuildDir}\`);
+        sendStatus(mainWindow, `Using temporary build directory: ${tempBuildDir}`);
         await fs.ensureDir(appContentDir);
         await fs.ensureDir(assetsDownloadDir);
 
         // --- 2. Fetch Main HTML ---
-        sendStatus(mainWindow, \`Fetching HTML from: \${targetUrl}\`);
+        sendStatus(mainWindow, `Fetching HTML from: ${targetUrl}`);
         let response;
         try {
              response = await axios.get(targetUrl, {
@@ -860,7 +296,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/9_1_0_4472_124 Safari/537.36' }
              });
         } catch(htmlError) {
-             throw new Error(\`Failed to fetch base HTML: \${htmlError.message}\`);
+             throw new Error(`Failed to fetch base HTML: ${htmlError.message}`);
         }
 
         const htmlContent = response.data;
@@ -897,7 +333,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                  // Remove query parameters/hash from filename if present
                 filename = filename.split('?')[0].split('#')[0];
                  // Basic sanitization (replace non-alphanumeric/dot/underscore/hyphen with '_')
-                filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || \`asset_\${assetCounter++}\${path.extname(assetUrl.pathname) || '.dat'}\`;
+                filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `asset_${assetCounter++}${path.extname(assetUrl.pathname) || '.dat'}`;
 
 
                 const localPath = path.join(assetsDownloadDir, filename);
@@ -907,7 +343,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                 // Only download if we haven't encountered this exact URL before
                 if (!assetMap.has(assetUrl.href)) {
                      assetMap.set(assetUrl.href, relativePathForHtml); // Store mapping
-                     sendStatus(mainWindow, \`Queueing download: \${filename} (from \${assetUrl.origin})\`);
+                     sendStatus(mainWindow, `Queueing download: ${filename} (from ${assetUrl.origin})`);
                     // Add download promise to the list
                     downloadTasks.push(
                          downloadAsset(assetUrl, localPath).then(success => {
@@ -927,12 +363,12 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                 }
 
             } catch (urlError) {
-               console.error(\`Skipping invalid URL: '\${originalUrlStr}' - \${urlError.message}\`);
-               sendStatus(mainWindow, \`Warning: Skipping invalid URL '${originalUrlStr}'\`);
+               console.error(`Skipping invalid URL: '${originalUrlStr}' - ${urlError.message}`);
+               sendStatus(mainWindow, `Warning: Skipping invalid URL '${originalUrlStr}'`);
             }
         });
 
-        sendStatus(mainWindow, \`Found \${assetMap.size} unique assets to download. Starting downloads...\`);
+        sendStatus(mainWindow, `Found ${assetMap.size} unique assets to download. Starting downloads...`);
         await Promise.all(downloadTasks); // Wait for all downloads to complete (or fail)
         sendStatus(mainWindow, 'Asset download process finished.');
 
@@ -944,7 +380,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         // --- 5. Prepare Electron Boilerplate for Packaged App ---
         sendStatus(mainWindow, 'Creating boilerplate for packaged app...');
         // Main process script for the packaged application
-        const packageMainJsContent = \`
+        const packageMainJsContent = `
             const { app, BrowserWindow } = require('electron');
             const path = require('path');
 
@@ -991,7 +427,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                     createWindow();
                 }
             });
-        \`;
+        `;
         await fs.writeFile(path.join(appContentDir, 'main.js'), packageMainJsContent);
 
         // Package.json for the packaged application
@@ -999,7 +435,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
          const packageJsonContent = JSON.stringify({
             name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-'), // Sanitize name
             version: "1.0.0",
-            description: \`Packaged version of \${baseUrl.host}\`,
+            description: `Packaged version of ${baseUrl.host}`,
             main: "main.js",
             author: "Websim Packager",
             license: "UNLICENSED", // Content license depends on the source
@@ -1023,12 +459,12 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
              const installCommand = 'npm install --production'; // Only install runtime deps (if any) + electron devDep
              exec(installCommand, { cwd: appContentDir, timeout: 180000 /* 3 min timeout */ }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`Packaged app 'npm install' error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Error installing dependencies for package: \${stderr || error.message}\`);
-                    return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`));
+                    console.error(`Packaged app 'npm install' error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    sendStatus(mainWindow, `Error installing dependencies for package: ${stderr || error.message}`);
+                    return reject(new Error(`npm install failed in temp directory: ${stderr || error.message}`));
                 }
-                console.log(\`Packaged app 'npm install' stdout: \${stdout}\`);
+                console.log(`Packaged app 'npm install' stdout: ${stdout}`);
                 sendStatus(mainWindow, 'Packaged app dependencies installed.');
                 resolve();
             });
@@ -1053,34 +489,34 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
              "/\\.git($|/)",
              "/dist($|/)", // Ignore downloader's dist
              "/temp-build-.*" // Ignore build dirs
-         ].map(p => \`--ignore="${p}"\`).join(" "); // Format for command line
+         ].map(p => `--ignore="${p}"`).join(" "); // Format for command line
 
 
          // Check if icon exists before packaging
          let iconArg = '';
          if (await fs.pathExists(iconPath)) {
-             iconArg = \`--icon="\${iconPath}"\`;
+             iconArg = `--icon="${iconPath}"`;
              sendStatus(mainWindow, `Using icon: ${iconPath}`);
          } else {
-              sendStatus(mainWindow, `Warning: Icon file not found at \${iconPath}. Using default icon.`);
+              sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`);
          }
 
-        const packagerCommand = \`npx electron-packager . "\${PACKAGED_APP_NAME}" --platform=win32 --arch=x64 --out="\${outputDirUserSelected}" --overwrite \${iconArg}\`;
+        const packagerCommand = `npx electron-packager . "${PACKAGED_APP_NAME}" --platform=win32 --arch=x64 --out="${outputDirUserSelected}" --overwrite ${iconArg}`;
         // Note: electron-packager runs from within the appContentDir
 
         await new Promise((resolve, reject) => {
             exec(packagerCommand, { cwd: appContentDir, timeout: 300000 /* 5 min timeout */ }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`electron-packager execution error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Packaging failed: \${stderr || error.message}\`);
-                    return reject(new Error(\`electron-packager command failed: \${stderr || error.message}\`));
+                    console.error(`electron-packager execution error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    sendStatus(mainWindow, `Packaging failed: ${stderr || error.message}`);
+                    return reject(new Error(`electron-packager command failed: ${stderr || error.message}`));
                 }
-                console.log(\`electron-packager stdout: \${stdout}\`);
+                console.log(`electron-packager stdout: ${stdout}`);
                  // Check stderr for warnings, even if command succeeded
                  if (stderr) {
-                     console.warn(\`electron-packager stderr (warnings):\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`);
+                     console.warn(`electron-packager stderr (warnings):\n${stderr}`);
+                     sendStatus(mainWindow, `Packaging finished with warnings (see console for details).`);
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -1089,15 +525,15 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         });
 
         // --- 8. Success ---
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); // Default output folder name structure
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`);
+        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`); // Default output folder name structure
+        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`);
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         // Send specific error message if available, otherwise generic
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`);
+        sendStatus(mainWindow, `ERROR: ${errorMessage}`);
         // Ensure the full error stack trace is logged to the console for debugging
         console.error(error.stack);
         return { success: false, error: errorMessage }; // Return error info to renderer
@@ -1107,12 +543,12 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             try {
                  // Optional: Delay cleanup or make conditional for debugging
                  // await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`);
+                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`);
                  await fs.remove(tempBuildDir);
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`);
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`);
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`);
+                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`);
             }
         }
         sendStatus(mainWindow, 'Process finished.');
@@ -1357,7 +793,7 @@ function addStatus(message, type = 'info') {
 
     const line = document.createElement('div');
     line.classList.add('status-line');
-    line.textContent = \`[${new Date().toLocaleTimeString()}] ${message}\`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
 
     // Add styling based on type
     if (type === 'error') {
@@ -1410,14 +846,14 @@ selectDirBtn.addEventListener('click', async () => {
         const directoryPath = await window.electronAPI.selectOutputDirectory();
         if (directoryPath) {
             outputDirInput.value = directoryPath;
-            addStatus(\`Output directory selected: \${directoryPath}\`);
+            addStatus(`Output directory selected: ${directoryPath}`);
             checkFormValidityAndUpdateButton(); // Re-check form validity
         } else {
              addStatus('Directory selection cancelled.', 'warning');
         }
     } catch (error) {
         console.error('Error selecting directory:', error);
-        addStatus(\`Error selecting directory: \${error.message}\`, 'error');
+        addStatus(`Error selecting directory: ${error.message}`, 'error');
     } finally {
          setControlsEnabled(true); // Re-enable controls
     }
@@ -1433,7 +869,7 @@ packageBtn.addEventListener('click', async () => {
     const outputDir = outputDirInput.value.trim();
 
     clearStatus(); // Clear previous log
-    addStatus(\`Starting process for: \${targetUrl}\`);
+    addStatus(`Starting process for: ${targetUrl}`);
     setControlsEnabled(false); // Disable UI during operation
 
     try {
@@ -1441,23 +877,23 @@ packageBtn.addEventListener('click', async () => {
         const result = await window.electronAPI.downloadAndPackage(targetUrl, outputDir);
 
         if (result.success) {
-            addStatus(\`------------------------------------------\`, 'success');
-            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
-            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
-            addStatus(\`------------------------------------------\`, 'success');
+            addStatus(`------------------------------------------`, 'success');
+            addStatus(`SUCCESS! Application packaged successfully.`, 'success');
+            addStatus(`Output Location: ${result.outputDir}`, 'success');
+            addStatus(`------------------------------------------`, 'success');
         } else {
              // Error message should have already been sent via status updates from main
-             addStatus(\`------------------------------------------\`, 'error');
-            addStatus(\`FAILURE: Process failed. See log above for details.\`, 'error');
-             addStatus(\`Error summary: \${result.error}\`, 'error');
-             addStatus(\`------------------------------------------\`, 'error');
+             addStatus(`------------------------------------------`, 'error');
+            addStatus(`FAILURE: Process failed. See log above for details.`, 'error');
+             addStatus(`Error summary: ${result.error}`, 'error');
+             addStatus(`------------------------------------------`, 'error');
         }
     } catch (error) {
         // Catch errors *invoking* the IPC function itself (less common)
         console.error('IPC invocation error:', error);
-        addStatus(\`------------------------------------------\`, 'error');
-        addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with main process: \${error.message}\`, 'error');
-        addStatus(\`------------------------------------------\`, 'error');
+        addStatus(`------------------------------------------`, 'error');
+        addStatus(`CRITICAL RENDERER ERROR: Failed to communicate with main process: ${error.message}`, 'error');
+        addStatus(`------------------------------------------`, 'error');
     } finally {
         setControlsEnabled(true); // Re-enable UI
     }
@@ -1600,4 +1036,3 @@ Thumbs.db
             alert("Failed to generate the project zip file. See console for details.");
         });
 });
-
