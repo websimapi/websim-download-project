@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+import { saveAs } from 'file-saver'; 
 
 const downloadBtn = document.getElementById('downloadBtn');
 
@@ -439,88 +439,99 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         sendStatus(mainWindow, 'Starting application packaging (@electron/packager)...');
         await fs.ensureDir(outputDirUserSelected);
 
-        const iconPath = path.resolve(__dirname, 'assets', 'icon.ico'); 
-        let iconArg = '';
-        let skipIcon = false;
+        const iconPathResolved = path.resolve(__dirname, 'assets', 'icon.ico');
+        let iconArg = ''; 
+        let useIcon = false;
 
         try {
-            const iconExists = await fs.pathExists(iconPath);
+            const iconExists = await fs.pathExists(iconPathResolved);
             if (iconExists) {
                  if (process.platform === 'linux') {
                       sendStatus(mainWindow, 'Host OS is Linux, target is Windows.');
                       sendStatus(mainWindow, 'Checking for Wine to embed .ico file (required on Linux)...');
                       try {
                           await new Promise((resolve, reject) => {
-                              exec('which wine', (err, stdout) => {
-                                   if (err || !stdout) reject(new Error('Wine not found in PATH'));
+                              exec('command -v wine', (err) => {
+                                   if (err) reject(new Error('Wine not found in PATH'));
                                    else resolve();
                               });
                           });
                           sendStatus(mainWindow, 'Wine found. Attempting to use custom icon.');
-                          iconArg = \`--icon="\${iconPath.replace(/\\\\/g, '/')}"\`;
+                          useIcon = true;
                       } catch (wineError) {
                            sendStatus(mainWindow, 'Warning: Wine not found or accessible. Packaging with default Electron icon. Install Wine to embed custom icons on Linux.');
-                           skipIcon = true;
+                           useIcon = false;
                       }
-
                  } else {
-                    iconArg = \`--icon="\${iconPath.replace(/\\\\/g, '/')}"\`;
-                    sendStatus(mainWindow, \`Using icon: \${iconPath}\`); 
+                    sendStatus(mainWindow, `Using icon: ${iconPathResolved}`);
+                    useIcon = true;
                  }
              } else {
-                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon.\`); 
-                  skipIcon = true;
+                  sendStatus(mainWindow, `Warning: Icon file not found at ${iconPathResolved}. Using default icon.`);
+                  useIcon = false;
              }
         } catch(iconError) {
-             sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`); 
-             skipIcon = true;
+             sendStatus(mainWindow, `Warning: Error checking for icon file: ${iconError.message}. Using default icon.`);
+             useIcon = false;
         }
 
-        if (skipIcon) {
-            iconArg = '';
+        if (useIcon) {
+            iconArg = `--icon="${iconPathResolved.replace(/\\/g, '/')}"`;
         }
 
         const ignorePatterns = [
-            '/node_modules/electron($|/)', 
-            '/node_modules/@electron/packager($|/)', 
+            '/node_modules/electron($|/)',
+            '/node_modules/@electron/packager($|/)',
             '/\\.git($|/)',
             '/dist($|/)',
             '/temp-build-.*',
-            '/node_modules/.*\\/(test|example|demo|benchmark|doc)($|/)',
-            '\\.map$'
+            '/node_modules/.*\\/(test|tests|example|examples|demo|benchmark|docs?|man)($|/)',
+            '/node_modules/.*\\.map$', 
+            '/node_modules/.*\\.d\\.ts$', 
+            'package-lock.json', 
+            '\\.eslintrc',
+            '\\.prettierrc',
+            '\\.gitignore'
         ];
-        const ignoreArgs = ignorePatterns.map(pattern => \`--ignore="\${pattern}"\`).join(" ");
+        const ignoreArgs = ignorePatterns.map(pattern => `--ignore="${pattern.replace(/"/g, '\\"')}"`).join(" ");
 
         const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = \`"\${outputDirUserSelected.replace(/\\\\/g, '/')}"\`; 
-        const packagerCommand = \`npx --yes @electron/packager . "\${finalAppName}" --platform=win32 --arch=x64 --out=\${finalOutputDir} --overwrite \${iconArg} \${ignoreArgs}\`; 
-        sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
+        const finalOutputDir = `"${outputDirUserSelected.replace(/\\/g, '/').replace(/"/g, '\\"')}"`;
+        const quotedAppName = `"${finalAppName.replace(/"/g, '\\"')}"`;
+
+        const packagerCommand = `npx --yes @electron/packager . ${quotedAppName} --platform=win32 --arch=x64 --out=${finalOutputDir} --overwrite ${iconArg} ${ignoreArgs}`;
+
+        sendStatus(mainWindow, `Executing: ${packagerCommand}`);
 
         await new Promise((resolve, reject) => {
-            exec(packagerCommand, { cwd: appContentDir, timeout: 900000 }, (error, stdout, stderr) => {
+            exec(packagerCommand, { cwd: appContentDir, timeout: 1200000 }, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(\`@electron/packager execution error: \${error.message}\`); 
-                    console.error(\`stderr: \${stderr}\`); 
-                    console.error(\`stdout: \${stdout}\`); 
-                    let errorDetail = stderr || stdout || error.message; 
-                    if (errorDetail.includes("EACCES")) {
-                        errorDetail = "Permission denied. Check file/folder permissions in temp or output directories.";
-                    } else if (errorDetail.includes("ENOENT")) {
-                         errorDetail = "Command not found (ENOENT). Ensure Node.js/npm is correctly installed and in PATH. Check npx functionality.";
-                    } else if (errorDetail.includes("Wine is required")) {
-                         errorDetail = "Wine is required on Linux to set Windows icon/metadata. Install Wine or remove assets/icon.ico to use default icon.";
-                    } else if (errorDetail.includes("Cannot find module 'electron'")) {
-                         errorDetail = "Packaged app 'npm install' likely failed to install Electron correctly. Check install logs above.";
+                    console.error(`@electron/packager execution error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    console.error(`stdout: ${stdout}`);
+                    let errorDetail = stderr || stdout || error.message;
+                    if (/Wine is required/.test(errorDetail) && process.platform === 'linux') {
+                         errorDetail = "Wine is required on Linux to set Windows icon/metadata. Install Wine (e.g., 'sudo apt install wine') or remove/rename assets/icon.ico to use the default icon.";
+                    } else if (/Cannot find module 'electron'/.test(errorDetail)) {
+                         errorDetail = "Packaged app 'npm install' likely failed or Electron was pruned unexpectedly. Check install logs above and prune/ignore rules.";
+                    } else if (error.code === 127 || /not found|ENOENT/.test(errorDetail)) { 
+                        errorDetail = `Command execution failed (Code ${error.code}, ENOENT). Ensure Node.js/npm/npx are correctly installed and in your system's PATH. Problematic part might be 'npx' or '@electron/packager'. Output: ${errorDetail}`;
                     } else if (/syntax error/i.test(errorDetail)) {
-                        errorDetail = \`Shell syntax error during packaging. Command: \${packagerCommand} Error: \${errorDetail}\`;
+                        errorDetail = `Shell syntax error during packaging. Command: ${packagerCommand} | Error: ${errorDetail}`;
+                    } else {
+                        errorDetail = `Packaging command failed with code ${error.code}. Output: ${errorDetail}`;
                     }
-                    sendStatus(mainWindow, \`Packaging failed: \${errorDetail}\`); 
-                    return reject(new Error(\`@electron/packager command failed: \${errorDetail}\`));
+                    sendStatus(mainWindow, `Packaging failed: ${errorDetail}`);
+                    return reject(new Error(`@electron/packager command failed: ${errorDetail}`));
                 }
-                console.log(\`@electron/packager stdout: \${stdout}\`); 
+                console.log(`@electron/packager stdout: ${stdout}`);
                 if (stderr) {
-                     console.warn(\`@electron/packager stderr (warnings):\\n\${stderr}\`); 
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`); 
+                     if (!/Wrote new app|Packaging complete/.test(stdout) && !/Packaging complete/.test(stderr)) {
+                        console.warn(`@electron/packager stderr:\n${stderr}`);
+                        sendStatus(mainWindow, `Packaging finished with messages (check console log).`);
+                     } else {
+                         sendStatus(mainWindow, 'Application packaging successful!');
+                     }
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -528,23 +539,23 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             });
         });
 
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); 
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`); 
+        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`); 
+        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`); 
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`); 
+        sendStatus(mainWindow, `ERROR: ${errorMessage}`); 
         console.error(error.stack);
         return { success: false, error: errorMessage }; 
     } finally {
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`); 
+                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`); 
                  await fs.remove(tempBuildDir).catch(async (rmError) => {
                      if (rmError.code === 'EPERM' && process.platform === 'win32') {
-                         sendStatus(mainWindow, \`Warning: Failed to remove temp dir (EPERM), retrying after delay...\`); 
+                         sendStatus(mainWindow, `Warning: Failed to remove temp dir (EPERM), retrying after delay...`); 
                          await new Promise(resolve => setTimeout(resolve, 2000)); 
                          await fs.remove(tempBuildDir);
                      } else {
@@ -553,8 +564,8 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                  });
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`); 
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`); 
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`); 
+                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`); 
             }
         }
         sendStatus(mainWindow, 'Process finished.');
@@ -892,7 +903,7 @@ selectDirBtn.addEventListener('click', async () => {
         const directoryPath = await window.electronAPI.selectDirectory();
         if (directoryPath) {
             outputDirInput.value = directoryPath;
-            addStatus(\`Output directory selected: \${directoryPath}\`, 'info');
+            addStatus(`Output directory selected: ${directoryPath}`, 'info');
             setControlsEnabled(true);
             packageBtn.disabled = !isFormValid() || isProcessing;
         } else {
@@ -901,7 +912,7 @@ selectDirBtn.addEventListener('click', async () => {
         }
     } catch (error) {
         console.error('Error selecting directory via IPC:', error);
-        addStatus(\`Error selecting directory: \${error.message || 'Unknown error'}\`, 'error');
+        addStatus(`Error selecting directory: ${error.message || 'Unknown error'}`, 'error');
         setControlsEnabled(true);
     }
 });
@@ -922,33 +933,33 @@ packageBtn.addEventListener('click', async () => {
     const outputDir = outputDirInput.value.trim();
 
     clearStatus(); 
-    addStatus(\`Starting download and packaging for: \${targetUrl}\`, 'info');
+    addStatus(`Starting download and packaging for: ${targetUrl}`, 'info');
     setControlsEnabled(false);
 
     try {
         const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
 
         if (result && result.success) {
-            addStatus(\`------------------------------------------\`, 'success');
-            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
-            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
-            addStatus(\`------------------------------------------\`, 'success');
+            addStatus(`------------------------------------------`, 'success');
+            addStatus(`SUCCESS! Application packaged successfully.`, 'success');
+            addStatus(`Output Location: ${result.outputDir}`, 'success');
+            addStatus(`------------------------------------------`, 'success');
         } else {
-             addStatus(\`------------------------------------------\`, 'error');
-             addStatus(\`FAILURE: Process encountered an error.\`, 'error');
+             addStatus(`------------------------------------------`, 'error');
+             addStatus(`FAILURE: Process encountered an error.`, 'error');
              if (result?.error) {
-                addStatus(\`Final Error Summary: \${result.error}\`, 'error');
+                addStatus(`Final Error Summary: ${result.error}`, 'error');
              } else {
-                 addStatus(\`Final Error Summary: Unknown error during packaging backend process.\`, 'error');
+                 addStatus(`Final Error Summary: Unknown error during packaging backend process.`, 'error');
              }
-             addStatus(\`------------------------------------------\`, 'error');
+             addStatus(`------------------------------------------`, 'error');
         }
     } catch (error) { 
         console.error('IPC invocation error (startPackaging):', error);
-        addStatus(\`------------------------------------------\`, 'error');
-        addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with backend: \${error.message || 'Unknown IPC error'}\`, 'error');
-        addStatus(\`Check main process logs if available.\`, 'error');
-        addStatus(\`------------------------------------------\`, 'error');
+        addStatus(`------------------------------------------`, 'error');
+        addStatus(`CRITICAL RENDERER ERROR: Failed to communicate with backend: ${error.message || 'Unknown IPC error'}`, 'error');
+        addStatus(`Check main process logs if available.`, 'error');
+        addStatus(`------------------------------------------`, 'error');
     } finally {
         setControlsEnabled(true); 
     }
