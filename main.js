@@ -296,8 +296,8 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
 
         const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = `"${outputDirUserSelected.replace(/\\/g, '/')}"`; 
-        const packagerCommand = `npx electron-packager . "${finalAppName}" --platform=win32 --arch=x64 --out=${finalOutputDir} --overwrite ${iconArg} ${ignoreString}`; 
+        const finalOutputDir = outputDirUserSelected.replace(/\\/g, '/'); 
+        const packagerCommand = `npx electron-packager . "${finalAppName}" --platform=win32 --arch=x64 --out="${finalOutputDir}" --overwrite ${iconArg} ${ignoreString}`; 
         sendStatus(mainWindow, `Executing: ${packagerCommand}`); 
 
         await new Promise((resolve, reject) => {
