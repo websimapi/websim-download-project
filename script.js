@@ -976,7 +976,7 @@ yarn-error.log*
 
 # Temporary Directories Used by This App
 temp-*
-websim-build-*/
+websim-build-*
 
 # OS Generated Files
 .DS_Store
@@ -1006,7 +1006,7 @@ Thumbs.db
             },
             comment: `Generated Electron project for websim downloading/packaging on ${new Date().toISOString()}`
         });
-        saveAs(content, `${projectFolderName}.zip`);
+        FileSaver.saveAs(content, `${projectFolderName}.zip`);
         downloadBtn.textContent = 'Download Project (.zip)';
         downloadBtn.disabled = false;
     } catch(err) {
