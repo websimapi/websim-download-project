@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+import FileSaver from 'file-saver';
 
 const downloadBtn = document.getElementById('downloadBtn');
 
@@ -423,70 +423,6 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
              exec(installCommand, { cwd: appContentDir, timeout: 180000 }, (error, stdout, stderr) => {
                 if (error) {
                     console.error(`Packaged app 'npm install' error: ${error.message}`);
-                    console.error(`stderr: ${stderr}`);
-                    sendStatus(mainWindow, `Error installing dependencies for package: ${stderr || error.message}`);
-                    return reject(new Error(`npm install failed in temp directory: ${stderr || error.message}`)); 
-                }
-                 // Log warnings from stderr as well
-                 if (stderr) {
-                     console.warn(`Packaged app 'npm install' stderr (warnings):\\n${stderr}`);
-                     // Don't report non-critical warnings as errors to the user status
-                     if (!stderr.toLowerCase().includes('error')) {
-                          sendStatus(mainWindow, `Dependency installation completed with warnings (see console).`);
-                     } else {
-                          sendStatus(mainWindow, `Dependency installation completed with errors/warnings (see console).`);
-                          // Consider rejecting if stderr contains actual errors, but npm usually exits non-zero for that.
-                     }
-
-                 } else {
-                     console.log(`Packaged app 'npm install' stdout: ${stdout}`); 
-                     sendStatus(mainWindow, 'Packaged app dependencies installed successfully.');
-                 }
-                resolve();
-            });
-        });
-
-        sendStatus(mainWindow, 'Starting application packaging (@electron/packager)...'); 
-        await fs.ensureDir(outputDirUserSelected);
-
-        const iconPath = path.resolve(__dirname, 'assets', 'icon.ico'); 
-
-        // Corrected ignore patterns slightly for robustness
-        const ignoreArgs = [
-             "--ignore='^/node_modules/\\.bin($|/)'", // Ignore binaries linked in node_modules
-             "--ignore='^/node_modules/electron($|/)'", // Let packager handle electron itself
-             "--ignore='^/node_modules/@electron/packager($|/)'",
-             "--ignore='^/\\.git($|/)'",
-             "--ignore='^/dist($|/)'",
-             "--ignore='^/temp-build-.*'" // Match temp dir prefix
-        ];
-        const ignoreString = ignoreArgs.join(" ");
-
-
-        let iconArg = '';
-        try {
-            const iconExists = await fs.pathExists(iconPath);
-            if (iconExists) {
-                 iconArg = `--icon="${iconPath.replace(/\\\\/g, '/')}"`; 
-                 sendStatus(mainWindow, `Using icon: ${iconPath}`);
-             } else {
-                  sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`);
-             }
-        } catch(iconError) {
-             sendStatus(mainWindow, `Warning: Error checking for icon file: ${iconError.message}`);
-        }
-
-
-        const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = `"${outputDirUserSelected.replace(/\\\\/g, '/')}"`; 
-        // Use npx @electron/packager instead
-        const packagerCommand = `npx @electron/packager . "${finalAppName}" --platform=win32 --arch=x64 --out=${finalOutputDir} --overwrite ${iconArg} ${ignoreString}`; 
-        sendStatus(mainWindow, `Executing: ${packagerCommand}`);
-
-        await new Promise((resolve, reject) => {
-            exec(packagerCommand, { cwd: appContentDir, timeout: 600000 }, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(`@electron/packager execution error: ${error.message}`);
                     console.error(`stderr: ${stderr}`);
                     let errorDetail = stderr || error.message;
                      // Improved error message handling
@@ -1031,7 +967,7 @@ Thumbs.db
             },
             comment: `Generated Electron project for websim downloading/packaging on ${new Date().toISOString()}`
         });
-        saveAs(content, `${projectFolderName}.zip`);
+        FileSaver.saveAs(content, `${projectFolderName}.zip`);
         downloadBtn.textContent = 'Download Project (.zip)';
         downloadBtn.disabled = false;
     } catch(err) {
