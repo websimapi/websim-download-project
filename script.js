@@ -146,7 +146,30 @@ SOFTWARE.
         "^/\\.vscode",             // Ignore vscode config
         "README\\.md",             // Ignore README
         "LICENSE",                 // Ignore LICENSE
-        ".*\\.log"                 // Ignore log files
+        ".*\\.log",                 // Ignore log files
+        "^/out",                   // Common build output directory
+        "^/build",                 // Common build output directory
+        "^/release",               // Common build output directory
+        // OS generated files
+        "\\.DS_Store",
+        "\\.DS_Store\\?",
+        "\\._\\*",
+        "\\.Spotlight-V100",
+        "\\.Trashes",
+        "ehthumbs\\.db",
+        "Thumbs\\.db",
+        // Editor directories
+        "\\.idea/",
+        "*.swp",
+        "*~",
+        // Env files
+        "\\.env",
+        "\\.env\\.*",
+        // Temp / Archive files
+        "*.zip",
+        "*.tar.gz",
+        "*.tgz",
+        "*.rar"
     ];
     const ignoreArgsString = ignorePatterns.map(p => `--ignore=${JSON.stringify(p)}`).join(" ");
 
@@ -223,13 +246,15 @@ app.on('window-all-closed', function () {
 });
 
 function sendStatus(window, message) {
-    if (window && !window.isDestroyed() && window.webContents) {
+    if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
        try {
            console.log(\`[Status] \${message}\`);
            window.webContents.send('status-update', message);
        } catch (e) {
           console.error("Failed to send status update:", e);
        }
+    } else {
+        console.log(\`[Status - Window Unavailable] \${message}\`);
     }
 }
 
@@ -242,6 +267,7 @@ async function downloadAsset(assetUrl, localPath) {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36'
             }
         });
+        await fs.ensureDir(path.dirname(localPath));
         await fs.writeFile(localPath, Buffer.from(response.data));
         return true;
     } catch (err) {
@@ -252,6 +278,7 @@ async function downloadAsset(assetUrl, localPath) {
 }
 
 ipcMain.handle('select-output-directory', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
     const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Select Output Directory for Packaged App',
         properties: ['openDirectory', 'createDirectory']
@@ -267,7 +294,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
     if (!targetUrl || !outputDirUserSelected) {
         throw new Error("Missing URL or Output Directory.");
     }
-    let tempBuildDir;
+    let tempBuildDir = null;
 
     try {
         tempBuildDir = path.join(app.getPath('temp'), \`websim-build-\${Date.now()}\`);
@@ -287,6 +314,7 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36' }
              });
         } catch(htmlError) {
+             sendStatus(mainWindow, \`ERROR: Failed to fetch base HTML: \${htmlError.message}\`);
              throw new Error(\`Failed to fetch base HTML: \${htmlError.message}\`);
         }
 
@@ -299,56 +327,122 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         const assetMap = new Map();
         let assetCounter = 0;
 
-        $('link[rel="stylesheet"][href], script[src], img[src], source[src], track[src], video[poster]').each((index, element) => {
+        const assetSelectors = [
+            'link[rel="stylesheet"][href]',
+            'script[src]',
+            'img[src]',
+            'img[srcset]',
+            'source[src]',
+            'source[srcset]',
+            'track[src]',
+            'video[poster]',
+            'audio[src]',
+            'object[data]',
+            'embed[src]',
+            'link[rel="icon"][href]',
+            'link[rel="apple-touch-icon"][href]',
+            'link[rel="manifest"][href]'
+            ];
+
+        $(assetSelectors.join(', ')).each((index, element) => {
             const $el = $(element);
-            let srcAttr = 'href';
-            if ($el.is('script') || $el.is('img') || $el.is('source') || $el.is('track') ) {
-                srcAttr = 'src';
-            } else if ($el.is('video[poster]')) {
-                 srcAttr = 'poster';
+            let originalUrlStr = null;
+            let attrToUpdate = null;
+
+            if ($el.is('link[href]')) { originalUrlStr = $el.attr('href'); attrToUpdate = 'href'; }
+            else if ($el.is('script[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+            else if ($el.is('img[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+            else if ($el.is('img[srcset]')) { originalUrlStr = $el.attr('srcset'); attrToUpdate = 'srcset'; } 
+            else if ($el.is('source[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+            else if ($el.is('source[srcset]')) { originalUrlStr = $el.attr('srcset'); attrToUpdate = 'srcset'; } 
+            else if ($el.is('track[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+            else if ($el.is('video[poster]')) { originalUrlStr = $el.attr('poster'); attrToUpdate = 'poster'; }
+            else if ($el.is('audio[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+            else if ($el.is('object[data]')) { originalUrlStr = $el.attr('data'); attrToUpdate = 'data'; }
+            else if ($el.is('embed[src]')) { originalUrlStr = $el.attr('src'); attrToUpdate = 'src'; }
+
+            if (!originalUrlStr || originalUrlStr.startsWith('data:') || originalUrlStr.startsWith('blob:')) {
+                 return; 
             }
 
-            const originalUrlStr = $el.attr(srcAttr);
-            if (!originalUrlStr || originalUrlStr.startsWith('data:')) {
-                 return;
-            }
+            if (attrToUpdate === 'srcset') {
+                const updatedSrcsetEntries = [];
+                const srcsetEntries = originalUrlStr.split(',').map(entry => entry.trim());
 
-            try {
-                const assetUrl = new URL(originalUrlStr, baseUrl.href);
+                srcsetEntries.forEach(entry => {
+                    const parts = entry.split(/\s+/);
+                    const urlPart = parts[0];
+                    const descriptor = parts.length > 1 ? parts.slice(1).join(' ') : '';
 
-                let filename = path.basename(assetUrl.pathname);
-                 filename = filename.split('?')[0].split('#')[0];
-                 filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || \`asset_\${assetCounter++}\${path.extname(assetUrl.pathname) || '.dat'}\`;
+                    if (!urlPart) return;
 
+                     try {
+                        const assetUrl = new URL(urlPart, baseUrl.href);
+                        let filename = path.basename(assetUrl.pathname);
+                        filename = filename.split('?')[0].split('#')[0] || \`asset_\${assetCounter++}.dat\`;
+                        filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_'); 
 
-                const localPath = path.join(assetsDownloadDir, filename);
-                const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/');
+                        const localPath = path.join(assetsDownloadDir, filename);
+                        const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/');
 
-                if (!assetMap.has(assetUrl.href)) {
-                     assetMap.set(assetUrl.href, relativePathForHtml);
-                     sendStatus(mainWindow, \`Queueing download: \${filename} (from \${assetUrl.origin})\`);
-                    downloadTasks.push(
-                         downloadAsset(assetUrl, localPath).then(success => {
-                             if (success) {
-                                 $el.attr(srcAttr, relativePathForHtml);
-                             } else {
-                                $el.remove();
-                             }
-                         })
-                    );
-                } else {
-                     $el.attr(srcAttr, assetMap.get(assetUrl.href));
+                        if (!assetMap.has(assetUrl.href)) {
+                             assetMap.set(assetUrl.href, relativePathForHtml);
+                             sendStatus(mainWindow, \`Queueing download (srcset): \${filename} (from \${assetUrl.origin})\`);
+                            downloadTasks.push(downloadAsset(assetUrl, localPath));
+                        }
+                        updatedSrcsetEntries.push(\`\${assetMap.get(assetUrl.href)} \${descriptor}\`.trim());
+
+                    } catch (urlError) {
+                       console.error(\`Skipping invalid srcset URL: '\${urlPart}' - \${urlError.message}\`);
+                       sendStatus(mainWindow, \`Warning: Skipping invalid srcset URL '\${urlPart}'\`);
+                    }
+                });
+                 $el.attr(attrToUpdate, updatedSrcsetEntries.join(', '));
+
+            } else { 
+                 try {
+                    const assetUrl = new URL(originalUrlStr, baseUrl.href);
+
+                    let filename = path.basename(assetUrl.pathname);
+                     filename = filename.split('?')[0].split('#')[0] || \`asset_\${assetCounter++}.dat\`; 
+                     filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_'); 
+
+                    const localPath = path.join(assetsDownloadDir, filename);
+                    const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/'); 
+
+                    if (!assetMap.has(assetUrl.href)) {
+                         assetMap.set(assetUrl.href, relativePathForHtml);
+                         sendStatus(mainWindow, \`Queueing download: \${filename} (from \${assetUrl.origin})\`);
+                        downloadTasks.push(
+                             downloadAsset(assetUrl, localPath).then(success => {
+                                 if(!success) {
+                                     sendStatus(mainWindow, \`Failed download will result in broken link for: \${filename}\`);
+                                 }
+                             })
+                        );
+                    }
+                     $el.attr(attrToUpdate, assetMap.get(assetUrl.href));
+
+                } catch (urlError) {
+                   console.error(\`Skipping invalid URL: '\${originalUrlStr}' - \${urlError.message}\`);
+                   sendStatus(mainWindow, \`Warning: Skipping invalid URL '\${originalUrlStr}'\`);
                 }
-
-            } catch (urlError) {
-               console.error(\`Skipping invalid URL: '\${originalUrlStr}' - \${urlError.message}\`);
-               sendStatus(mainWindow, \`Warning: Skipping invalid URL '\${originalUrlStr}'\`);
             }
         });
 
         sendStatus(mainWindow, \`Found \${assetMap.size} unique assets to download. Starting downloads...\`);
-        await Promise.all(downloadTasks);
+        const downloadResults = await Promise.allSettled(downloadTasks);
+        const failedDownloads = downloadResults.filter(r => r.status === 'rejected').length;
+        if (failedDownloads > 0) {
+            sendStatus(mainWindow, \`Warning: \${failedDownloads} asset(s) failed to download. Check console for details.\`);
+        }
         sendStatus(mainWindow, 'Asset download process finished.');
+
+        if (!$('base[href]').length) {
+            $('head').prepend(\`<base href="\${targetUrl}">\`);
+             sendStatus(mainWindow, 'Added <base> tag to preserve relative links within content.');
+        }
+
 
         const finalHtmlContent = $.html();
         await fs.writeFile(path.join(appContentDir, 'index.html'), finalHtmlContent);
@@ -361,14 +455,17 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
 
             function createWindow () {
                 const mainWindow = new BrowserWindow({
-                    width: 1280,
+                    width: 1280, 
                     height: 800,
                     webPreferences: {
-                        nodeIntegration: false,
-                        contextIsolation: true,
+                        nodeIntegration: false, 
+                        contextIsolation: true, 
+                        sandbox: false, 
                         webSecurity: false, 
+                        spellcheck: false,
+                        preload: path.join(__dirname, 'preload-packaged.js') 
                     },
-                    autoHideMenuBar: true,
+                    autoHideMenuBar: true, 
                 });
 
                 mainWindow.loadFile(path.join(__dirname, 'index.html'));
@@ -391,48 +488,56 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         \`;
         await fs.writeFile(path.join(appContentDir, 'main.js'), packageMainJsContent);
 
+        const packagePreloadJsContent = \`
+            // Preload script for the packaged application (preload-packaged.js)
+            // const { contextBridge, ipcRenderer } = require('electron');
+            // console.log('Packaged app preload script loaded.');
+        \`;
+        await fs.writeFile(path.join(appContentDir, 'preload-packaged.js'), packagePreloadJsContent);
+
+
         let electronVersion;
         try {
             const ownPackageJsonPath = path.join(__dirname, 'package.json');
             const ownPackageJson = JSON.parse(await fs.readFile(ownPackageJsonPath, 'utf8'));
             electronVersion = ownPackageJson.devDependencies.electron;
-            if (!electronVersion) throw new Error('Electron version not found in this project\'s devDependencies.');
+            if (!electronVersion) throw new Error('Electron version not found in downloader project devDependencies.');
              sendStatus(mainWindow, \`Using Electron version: \${electronVersion} for packaging.\`);
         } catch (e) {
-            console.error("Failed to read own package.json for Electron version:", e);
-            sendStatus(mainWindow, "Warning: Could not determine Electron version from project's package.json. Using default '^28.0.0'.");
+            console.error("Failed to read downloader package.json for Electron version:", e);
+            sendStatus(mainWindow, "Warning: Could not determine Electron version. Using default '^28.0.0'.");
             electronVersion = "^28.0.0"; 
         }
 
-        const packageJsonContent = JSON.stringify({
-            name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-'),
+        const packageJsonContentPackaged = JSON.stringify({
+            name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
             version: "1.0.0",
             description: \`Packaged version of \${baseUrl.host}\`,
             main: "main.js",
             author: "Websim Packager",
             license: "UNLICENSED", 
             dependencies: {
-                // Dependencies required by the *packaged* app's main.js (currently none specific)
             },
             devDependencies: {
-                 "electron": electronVersion
+                 "electron": electronVersion 
             }
         }, null, 2);
-        await fs.writeFile(path.join(appContentDir, 'package.json'), packageJsonContent);
+        await fs.writeFile(path.join(appContentDir, 'package.json'), packageJsonContentPackaged);
 
         sendStatus(mainWindow, 'Installing Electron dependency for the packaged app (this may take a moment)...');
         await new Promise((resolve, reject) => {
-            const installCommand = 'npm install --production --no-save --ignore-scripts --prefer-offline --no-audit --progress=false';
-             exec(installCommand, { cwd: appContentDir, timeout: 300000 }, (error, stdout, stderr) => {
+            const installCommand = 'npm install --omit=dev --no-save --ignore-scripts --prefer-offline --no-audit --progress=false';
+             exec(installCommand, { cwd: appContentDir, timeout: 300000 }, (error, stdout, stderr) => { 
                 if (error) {
                     console.error(\`Packaged app 'npm install' error: \${error.message}\`);
                     console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Error installing Electron dependency for package: \${stderr || error.message}\`);
-                    return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`));
+                    const errMsg = \`Error installing Electron dependency for package: \${stderr || error.message}\`;
+                    sendStatus(mainWindow, \`ERROR: \${errMsg}\`);
+                    return reject(new Error(errMsg));
                 }
                  if (stderr) {
                      console.warn(\`Packaged app 'npm install' stderr (warnings):\\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Electron installation completed with warnings (see console).\`);
+                     sendStatus(mainWindow, \`Electron installation completed with warnings (check console).\`);
                  } else {
                      console.log(\`Packaged app 'npm install' stdout: \${stdout}\`);
                      sendStatus(mainWindow, 'Packaged app Electron dependency installed successfully.');
@@ -442,23 +547,22 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         });
 
         sendStatus(mainWindow, 'Starting application packaging (electron-packager)...');
-        await fs.ensureDir(outputDirUserSelected);
+        await fs.ensureDir(outputDirUserSelected); 
 
         let iconArg = '';
+        const iconSourcePath = path.resolve(__dirname, 'assets', 'icon.ico'); 
         try {
-            const iconPath = path.resolve(__dirname, 'assets', 'icon.ico');
-            if (await fs.pathExists(iconPath)) {
-                 iconArg = \`--icon=\${JSON.stringify(iconPath)}\`;
-                 sendStatus(mainWindow, \`Using icon: \${iconPath}\`);
+            if (await fs.pathExists(iconSourcePath)) {
+                 const iconDestPath = path.join(appContentDir, 'icon.ico');
+                 await fs.copy(iconSourcePath, iconDestPath);
+                 iconArg = \`--icon=icon.ico\`;
+                 sendStatus(mainWindow, \`Using icon: \${iconSourcePath}\`);
              } else {
-                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon. Please convert assets/icon.svg to assets/icon.ico.\`);
+                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconSourcePath}. Using default icon. Ensure assets/icon.ico exists.\`);
              }
         } catch(iconError) {
-             sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`);
+             sendStatus(mainWindow, \`Warning: Error checking/copying icon file: \${iconError.message}\`);
         }
-
-        const quotedOutputDir = JSON.stringify(outputDirUserSelected);
-        const finalAppName = PACKAGED_APP_NAME;
 
         let commandIgnoreArgs = '';
         try {
@@ -466,19 +570,22 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             const ownPackageJson = JSON.parse(await fs.readFile(ownPackageJsonPath, 'utf8'));
             const packageWinScript = ownPackageJson.scripts['package-win'];
             if (packageWinScript) {
-                const ignoreMatch = packageWinScript.match(/(--ignore=.*?)(?=\\s--|\\s*$)/g);
-                if (ignoreMatch) {
-                    commandIgnoreArgs = ignoreMatch.join(' ');
+                const ignoreFlags = packageWinScript.match(/--ignore=[^\s"]+|--ignore="[^"]*"/g);
+                if (ignoreFlags) {
+                    commandIgnoreArgs = ignoreFlags.join(' ');
                     sendStatus(mainWindow, \`Using ignore arguments from project config: \${commandIgnoreArgs}\`);
                 } else {
-                    sendStatus(mainWindow, 'No --ignore arguments found in project package.json script, packaging without specific ignores.');
+                     sendStatus(mainWindow, 'No --ignore arguments found in project package.json script.');
                 }
             }
         } catch (pkgReadError) {
              console.error("Could not read project package.json to extract ignore patterns:", pkgReadError);
-             sendStatus(mainWindow, 'Warning: Failed to extract ignore patterns from project config, proceeding without them.');
-             commandIgnoreArgs = '--ignore=^/dist --ignore=^/temp-.* --ignore=^/node_modules/\\.cache --ignore=/\\.git';
+             sendStatus(mainWindow, 'Warning: Failed to extract ignore patterns from project config.');
+             commandIgnoreArgs = '--ignore="^/dist" --ignore="^/temp-.*" --ignore="^/node_modules/\\.cache" --ignore="/\\.git"';
         }
+
+        const quotedOutputDir = JSON.stringify(outputDirUserSelected);
+        const finalAppName = PACKAGED_APP_NAME; 
 
         const packagerCommand = \`npx electron-packager . "\${finalAppName}" --platform=win32 --arch=x64 --out=\${quotedOutputDir} --overwrite \${iconArg} \${commandIgnoreArgs}\`;
         sendStatus(mainWindow, \`Executing: \${packagerCommand}\`);
@@ -489,8 +596,9 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                     console.error(\`electron-packager execution error: \${error.message}\`);
                     console.error(\`stdout: \${stdout}\`);
                     console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Packaging failed: \${stderr || error.message}\`);
-                    return reject(new Error(\`electron-packager command failed: \${stderr || error.message}\`));
+                    const errMsg = \`Packaging failed: \${stderr || error.message}\`;
+                    sendStatus(mainWindow, \`ERROR: \${errMsg}\`);
+                    return reject(new Error(errMsg));
                 }
                 console.log(\`electron-packager stdout: \${stdout}\`);
                  if (stderr) {
@@ -524,7 +632,6 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                 sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`);
             }
         }
-        sendStatus(mainWindow, 'Process finished.');
     }
 });
 
@@ -549,7 +656,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
     <title>Websim Downloader & Packager</title>
     <style>
         :root {
@@ -575,16 +682,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
             color: var(--dark-gray);
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: 100vh; 
             box-sizing: border-box;
-            overflow: hidden;
+            overflow: hidden; 
         }
         .container {
             background-color: #fff;
             padding: 25px 30px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            flex-shrink: 0;
+            flex-shrink: 0; 
             margin-bottom: 20px;
         }
         h1 {
@@ -620,6 +727,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
             background-color: var(--medium-gray);
             cursor: not-allowed;
          }
+         /* Input validation styles */
+        input:invalid {
+            border-color: var(--error-color);
+        }
+        input:focus:invalid {
+             box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+
         button {
             padding: 10px 20px;
             margin-right: 10px;
@@ -634,6 +749,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         button#selectDirBtn {
             background-color: var(--secondary-color);
             color: white;
+            flex-shrink: 0; 
         }
         button#selectDirBtn:hover:not(:disabled) {
             background-color: #5a6268;
@@ -648,7 +764,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
         button:disabled {
-            background-color: #cccccc !important;
+            background-color: #cccccc !important; 
             color: #666 !important;
             cursor: not-allowed;
             box-shadow: none !important;
@@ -660,11 +776,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
             margin-bottom: 20px;
         }
         .dir-selection input[type="text"] {
-            flex-grow: 1;
-            margin: 0 10px 0 0;
+            flex-grow: 1; 
+            margin: 0 10px 0 0; 
         }
         .status-container {
-             flex-grow: 1;
+             flex-grow: 1; 
              display: flex;
              flex-direction: column;
              min-height: 150px; 
@@ -691,6 +807,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             margin-bottom: 0; 
             flex-shrink: 0; 
          }
+         /* Status line styling */
          .status-line {
             display: block; 
             margin-bottom: 3px;
@@ -698,6 +815,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             border-radius: 3px;
             border-left: 3px solid transparent; 
         }
+        /* Specific status types */
         .status-line.error {
             color: var(--error-color);
             font-weight: bold;
@@ -716,16 +834,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
             border-left-color: var(--success-color);
         }
          .status-line.info {
-             color: #0c5460;
+             color: #0c5460; 
              background-color: #d1ecf1;
              border-left-color: var(--info-color);
          }
           .status-line.initial {
              color: var(--secondary-color);
              font-style: italic;
-             background-color: transparent;
+             background-color: transparent; 
              border-left-color: var(--secondary-color);
          }
+
+        /* Fade-in animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
     </style>
 </head>
 <body>
@@ -747,7 +872,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     <div class="status-container">
          <label class="status-label" for="status">Status Log:</label>
         <div id="status">
-             <!-- Initial message will be added by JS -->
+             <!-- Status messages will be added by renderer.js -->
         </div>
     </div>
 
@@ -757,11 +882,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     `);
 
     projectFolder.file("renderer.js", `
+// Ensure electronAPI is available from preload script
 if (!window.electronAPI) {
-    console.error("FATAL: electronAPI not found on window. Preload script likely failed or contextBridge is not working.");
-    alert("Critical Error: Communication with the backend process failed. The application cannot function correctly. Please check the Developer Tools (View -> Toggle Developer Tools) for specific error messages related to 'preload.js' or 'contextBridge'.");
+    const errorMsg = "FATAL: electronAPI not found. Preload script likely failed. Check console (Ctrl+Shift+I or Cmd+Option+I).";
+    console.error(errorMsg);
+    document.body.innerHTML = \`<div style="color: red; padding: 20px; font-size: 1.2em;">\${errorMsg}</div>\`;
+    throw new Error("electronAPI not available");
 } else {
-    console.log('[Renderer] electronAPI found. UI script initializing.');
+    console.log('[Renderer] electronAPI bridge confirmed.');
 }
 
 const urlInput = document.getElementById('urlInput');
@@ -779,11 +907,11 @@ function addStatus(message, type = 'info') {
         console.warn("[addStatus] Attempted to add empty status.");
         return;
     }
-    console.log(`[Status-${type}] ${textContent}`); 
+    console.log(\`[Status-\${type}] \${textContent}\`); 
 
     const line = document.createElement('div');
-    line.classList.add('status-line', type);
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${textContent}`;
+    line.classList.add('status-line', type); 
+    line.textContent = \`[\${new Date().toLocaleTimeString([], { hour12: false })}] \${textContent}\`;
 
     const initialMessage = statusDiv.querySelector('.status-line.initial');
     if (initialMessage) {
@@ -841,13 +969,13 @@ selectDirBtn.addEventListener('click', async () => {
         const directoryPath = await window.electronAPI.selectDirectory();
         if (directoryPath) {
             outputDirInput.value = directoryPath; 
-            addStatus(`Output directory selected: ${directoryPath}`, 'info');
+            addStatus(\`Output directory selected: \${directoryPath}\`, 'info');
         } else {
              addStatus('Directory selection cancelled.', 'warning');
         }
     } catch (error) {
         console.error('Error selecting directory via IPC:', error);
-        addStatus(`Error selecting directory: ${error.message || 'Unknown error'}`, 'error');
+        addStatus(\`Error selecting directory: \${error.message || 'Unknown error'}\`, 'error');
     } finally {
          setControlsEnabled(true);
          checkFormValidityAndUpdateButton();
@@ -869,28 +997,29 @@ packageBtn.addEventListener('click', async () => {
     const outputDir = outputDirInput.value.trim();
 
     clearStatus(); 
-    addStatus(`Starting download and packaging for: ${targetUrl}`, 'info');
+    addStatus(\`Starting download and packaging for: \${targetUrl}\`, 'info');
     setControlsEnabled(false); 
 
     try {
         const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
 
         if (result?.success) {
-            addStatus(`------------------------------------------`, 'success');
-            addStatus(`SUCCESS! Application packaged successfully.`, 'success');
-            addStatus(`Output Location: ${result.outputDir}`, 'success');
-            addStatus(`------------------------------------------`, 'success');
+            addStatus(\`------------------------------------------\`, 'success');
+            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
+            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
+            addStatus(\`------------------------------------------\`, 'success');
         } else {
-             addStatus(`------------------------------------------`, 'error');
-             addStatus(`FAILURE: Process encountered an error.`, 'error');
-             addStatus(`Error details: ${result?.error || 'Unknown error during packaging.'}`, 'error');
-             addStatus(`------------------------------------------`, 'error');
+             addStatus(\`------------------------------------------\`, 'error');
+             addStatus(\`FAILURE: Process encountered an error.\`, 'error');
+             addStatus(\`Error details: \${result?.error || 'Unknown error during packaging.'}\`, 'error');
+             addStatus(\`------------------------------------------\`, 'error');
         }
     } catch (error) {
         console.error('IPC invocation error (startPackaging):', error);
-        addStatus(`------------------------------------------`, 'error');
-        addStatus(`CRITICAL RENDERER ERROR: Failed to execute packaging task: ${error.message || 'Unknown IPC error'}`, 'error');
-        addStatus(`------------------------------------------`, 'error');
+        addStatus(\`------------------------------------------\`, 'error');
+        addStatus(\`CRITICAL RENDERER ERROR: Failed to execute packaging task: \${error.message || 'Unknown IPC error'}\`, 'error');
+        addStatus(\`Check main process logs for more details.\`, 'error');
+        addStatus(\`------------------------------------------\`, 'error');
     } finally {
         setControlsEnabled(true); 
         checkFormValidityAndUpdateButton(); 
@@ -912,7 +1041,7 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
              } else if (message.startsWith('Warning:')) {
                  type = 'warning';
                  message = message.substring(8).trim(); 
-             } else if (message.includes('successful!') || message.includes('SUCCESS') || message.includes('complete.')) {
+             } else if (message.includes('success') || message.includes('complete.')) {
                  type = 'success';
               } else if (message.includes('failed') || message.includes('FAILURE')) {
                   type = 'error';
@@ -934,12 +1063,9 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
          console.error("[Renderer] Error setting up status update listener:", error);
          addStatus("Error: Failed to initialize status updates from backend.", 'error');
     }
-} else if (window.electronAPI) {
-    console.error("[Renderer] ERROR: window.electronAPI.onStatusUpdate is not a function. Status updates will not be received.");
-    addStatus("Error: Cannot receive status updates (API inconsistency).", 'error');
 } else {
-    console.error("[Renderer] ERROR: electronAPI is not available. Status updates cannot be set up.");
-    alert("Critical Error: Communication with the backend process failed. The application cannot function correctly. Please check the Developer Tools (View -> Toggle Developer Tools) for error messages related to 'preload.js' or 'contextBridge'.");
+    console.error("[Renderer] ERROR: electronAPI not available or onStatusUpdate is missing.");
+    addStatus("Error: Cannot receive status updates from backend process.", 'error');
 }
 
 checkFormValidityAndUpdateButton();
@@ -958,22 +1084,22 @@ console.log('[Renderer] UI Initialized.');
     </linearGradient>
   </defs>
   <rect width="100" height="100" rx="18" ry="18" fill="url(#grad1)"/>
-  <!-- Simple representation of download/package -->
-  <path d="M 50 30 L 50 60 L 40 50 M 50 60 L 60 50" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M 30 70 H 70" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" />
+  <polyline points="35,50 50,65 65,50" stroke="#ffffff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="50" y1="30" x2="50" y2="63" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <line x1="30" y1="75" x2="70" y2="75" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
 </svg>`;
     assetsFolder.file("icon.svg", svgIcon);
 
     projectFolder.file(".gitignore", `# Node dependencies
 node_modules/
 
-# Build output
+# Build output folders
 dist/
 out/
 build/
 release/
 
-# Packaged application files (specific examples)
+# Packaged application files (platform specific examples)
 *.exe
 *.dmg
 *.pkg
@@ -992,8 +1118,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 logs/
+*debug.log
 
-# Temporary files generated by this application
+# Temporary files generated by this application's main process
 temp-*
 websim-build-*/
 
@@ -1015,17 +1142,19 @@ Thumbs.db
 # Environment variables file
 .env
 .env.*
+.env.local
 
-# Optional lockfiles (if you commit package-lock.json, remove it here)
+# Optional lockfiles
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
 
-# Other temporary files
+# Other temporary/archive files often not needed in repo
 *.zip
 *.tar.gz
 *.tgz
 *.rar
+*.7z
 `);
 
     downloadBtn.textContent = 'Generating Zip...';
@@ -1043,10 +1172,10 @@ Thumbs.db
         saveAs(content, `${projectFolderName}.zip`);
         downloadBtn.textContent = 'Download Project (.zip)';
         downloadBtn.disabled = false;
-    } catch(err) {
+    } catch(err) { 
         console.error("Error generating zip file:", err);
-        alert("Failed to generate the project zip file. See console for details.");
+        alert(`Failed to generate the project zip file: ${err.message}`);
         downloadBtn.textContent = 'Error - Try Again?';
-        downloadBtn.disabled = false;
+        downloadBtn.disabled = false; 
     }
 });
