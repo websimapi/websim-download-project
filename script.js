@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+import { saveAs } from 'file-saver';
 
 const downloadBtn = document.getElementById('downloadBtn');
 
@@ -20,7 +20,7 @@ This Node.js Electron application allows you to fetch the client-side source cod
 
 *   Fetches HTML, CSS, JavaScript, and assets linked within the HTML.
 *   Packages the downloaded client-side code into an Electron application.
-*   Uses Electron Packager to create a distributable executable (.exe).
+*   Uses @electron/packager to create a distributable executable (.exe).
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ This Node.js Electron application allows you to fetch the client-side source cod
     cd ${projectFolderName}
     \`\`\`
 
-3.  **Install dependencies:** This command installs Electron, Electron Packager, and other necessary libraries.
+3.  **Install dependencies:** This command installs Electron, @electron/packager, and other necessary libraries.
     \`\`\`bash
     npm install
     \`\`\`
@@ -67,7 +67,7 @@ This Node.js Electron application allows you to fetch the client-side source cod
     *   Create a temporary Electron project structure.
     *   Inject the downloaded content and the modified HTML into this structure.
     *   Install Electron within the temporary structure (required by the packager).
-    *   Use \`electron-packager\` to build the final executable for Windows (x64).
+    *   Use \`@electron/packager\` to build the final executable for Windows (x64).
 
 5.  **Find the Executable:** Once the process completes successfully, navigate to the output directory you selected in step 3. Inside, you should find a folder named something like \`packaged-websim-win32-x64\`. This folder contains your standalone \`.exe\` file and other necessary resources. Double-click the \`.exe\` to run the packaged websim.
 
@@ -80,8 +80,8 @@ This Node.js Electron application allows you to fetch the client-side source cod
     *   Downloaded assets are placed in a \`downloaded_assets\` subfolder.
     *   A minimal \`main.js\` (the Electron main process script for the *packaged* app) is created. This script simply creates a browser window and loads the local \`index.html\`.
     *   A minimal \`package.json\` defining the packaged app's structure and Electron dependency is created.
-4.  **Dependency Installation for Package (main.js):** Critically, \`npm install\` is run *inside the temporary project directory*. This installs Electron there, which \`electron-packager\` needs to bundle.
-5.  **Packaging (main.js):** The Node.js \`child_process.exec\` function is used to run the \`electron-packager\` command. This command takes the temporary project directory as input and builds the distributable application (including the Node.js runtime, Electron framework, and all the downloaded websim code/assets) into the specified output directory.
+4.  **Dependency Installation for Package (main.js):** Critically, \`npm install\` is run *inside the temporary project directory*. This installs Electron there, which \`@electron/packager\` needs to bundle.
+5.  **Packaging (main.js):** The Node.js \`child_process.exec\` function is used to run the \`@electron/packager\` command via \`npx\`. This command takes the temporary project directory as input and builds the distributable application (including the Node.js runtime, Electron framework, and all the downloaded websim code/assets) into the specified output directory.
 6.  **Interface (index.html, renderer.js, preload.js):** The user interface you interact with is also an Electron app.
     *   \`index.html\`: Defines the layout (URL input, directory selection, button, status area).
     *   \`renderer.js\`: Handles button clicks, calls backend functions via the preload script, and updates the status area.
@@ -93,7 +93,7 @@ This Node.js Electron application allows you to fetch the client-side source cod
 *   **Complex SPAs:** Single Page Applications (SPAs) built with frameworks like React, Angular, or Vue might be difficult to package correctly. Their routing, state management, and build processes often rely on server interaction or specific configurations not easily replicated by simple asset downloading.
 *   **Server-Side Dependencies:** The packaged application will *only* contain the client-side code. Any functionality that requires communication with the original web server (e.g., fetching data from an API, user authentication, database interactions) will **not** work in the offline packaged version unless the original websim was designed to be fully functional offline.
 *   **Path Issues:** While the tool attempts to handle relative paths for common assets (CSS, JS, images), complex cases (e.g., paths generated dynamically in JS, paths within CSS \`url()\`) might not be rewritten correctly, leading to broken styles or images in the packaged app.
-*   **Asset Discovery:** The current implementation only looks for assets in specific tags (\`link[rel=stylesheet]\`, \`script[src]\`, \`img[src]\`). Assets loaded via other means (e.g., JavaScript fetch, CSS \`@import\`, inline styles with \`url()\`) might not be downloaded.
+*   **Asset Discovery:** The current implementation primarily looks for assets in \`link[rel=stylesheet][href]\`, \`script[src]\`, \`img[src]\`, \`source[src]\`, \`track[src]\`, \`video[poster]\`. Assets loaded via other means (e.g., JavaScript fetch, CSS \`@import\`, inline styles with \`url()\`, complex JS loaders) might not be downloaded.
 *   **Cross-Origin Resources:** The Node.js backend fetch can download resources from different domains, bypassing browser CORS limitations that would apply if fetching directly from the renderer.
 *   **Build Size:** Including all assets can significantly increase the size of the final executable. Electron itself adds a considerable base size (~100MB+).
 *   **Security (\`webSecurity: false\`):** The packaged app's \`main.js\` includes \`webSecurity: false\`. This is often necessary to allow the local \`index.html\` file to load other local resources (\`file://...\`) like the downloaded assets. However, **disabling web security can have security implications** if the downloaded code itself contains vulnerabilities or attempts malicious actions. Use with caution and only package trusted content.
@@ -139,7 +139,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 `);
 
-    // Add package.json
+    // Add package.json for the downloader app
     projectFolder.file("package.json", `{
   "name": "websim-downloader-packager",
   "version": "1.0.0",
@@ -147,7 +147,7 @@ SOFTWARE.
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "package-win": "electron-packager . packaged-websim --platform=win32 --arch=x64 --out=dist/ --overwrite --icon=assets/icon.ico --ignore=/dist/ --ignore=/temp-build-*/ --ignore=/\\.git/ --ignore=/node_modules/\\.bin/"
+    "package-win": "echo 'This script is intended for DEVELOPMENT packaging of the downloader itself, not for packaging the downloaded websim.' && echo 'Use the application UI (npm start) to package a websim.' && exit 1"
   },
   "keywords": [
     "electron",
@@ -159,9 +159,8 @@ SOFTWARE.
   "author": "AI Generated",
   "license": "MIT",
   "devDependencies": {
-    "@electron/packager": "^18.3.2", // Use the new official package name
-    "electron": "^28.2.3",
-    "electron-builder": "^24.9.1" // Keep builder in case user wants to switch later
+    "@electron/packager": "^18.3.2",
+    "electron": "^28.2.3"
   },
   "dependencies": {
     "axios": "^1.6.7",
@@ -170,7 +169,7 @@ SOFTWARE.
   }
 }`);
 
-    // Add main.js (Electron main process)
+    // Add main.js (Electron main process for the downloader app)
     projectFolder.file("main.js", `
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
@@ -198,6 +197,9 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
+
+    // Optional: Open DevTools for debugging the downloader app itself
+    // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
@@ -209,369 +211,559 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
+    // On macOS, apps stay active until Cmd+Q
     if (process.platform !== 'darwin') app.quit();
 });
 
-function sendStatus(window, message) {
-    if (window && !window.isDestroyed() && window.webContents) {
+// --- IPC Handlers ---
+
+// Send status updates to renderer
+function sendStatus(message) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
        try {
-           console.log(\`[Status] \${message}\`);
-           window.webContents.send('status-update', message);
+           // Log to main process console as well
+           console.log(`[Status] ${message}`);
+           mainWindow.webContents.send('status-update', message);
        } catch (e) {
           console.error("Failed to send status update:", e);
        }
+    } else {
+        console.log(`[Status - Window Gone] ${message}`);
     }
 }
 
-async function downloadAsset(assetUrl, localPath) {
-    try {
-        const response = await axios.get(assetUrl.href, {
-            responseType: 'arraybuffer',
-            timeout: 15000,
-             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36'
-            }
-        });
-        await fs.writeFile(localPath, Buffer.from(response.data));
-        return true;
-    } catch (err) {
-        console.error(\`Failed to download asset: \${assetUrl.href} - \${err.message}\`);
-        sendStatus(mainWindow, \`Warning: Failed to download \${path.basename(assetUrl.pathname)} (\${err.code || err.message})\`);
-        return false;
-    }
-}
-
+// Handle directory selection request
 ipcMain.handle('select-output-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Select Output Directory for Packaged App',
         properties: ['openDirectory', 'createDirectory']
     });
     if (result.canceled || result.filePaths.length === 0) {
-        sendStatus(mainWindow, 'Directory selection cancelled.');
+        sendStatus('Directory selection cancelled.');
         return null;
     }
+    sendStatus(`Output directory selected: ${result.filePaths[0]}`);
     return result.filePaths[0];
 });
 
+// Handle the main download and package request
 ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSelected) => {
     if (!targetUrl || !outputDirUserSelected) {
+        sendStatus('ERROR: Missing URL or Output Directory.');
         throw new Error("Missing URL or Output Directory.");
     }
-    let tempBuildDir;
+
+    let tempBuildDir = null; // Initialize outside try
+    const startTime = Date.now();
 
     try {
-        tempBuildDir = path.join(app.getPath('temp'), \`websim-build-\${Date.now()}\`);
-        const appContentDir = path.join(tempBuildDir, 'app');
-        const assetsDownloadDir = path.join(appContentDir, PACKAGED_ASSETS_DIR);
+        tempBuildDir = path.join(app.getPath('temp'), `websim-build-${Date.now()}`);
+        const appContentDir = path.join(tempBuildDir, 'app'); // Dir containing the packaged app's code
+        const assetsDownloadDir = path.join(appContentDir, PACKAGED_ASSETS_DIR); // Subdir for assets
 
-        sendStatus(mainWindow, \`Using temporary build directory: \${tempBuildDir}\`);
+        sendStatus(`Using temporary build directory: ${tempBuildDir}`);
         await fs.ensureDir(appContentDir);
         await fs.ensureDir(assetsDownloadDir);
+        sendStatus('Temporary directories created.');
 
-        sendStatus(mainWindow, \`Fetching HTML from: \${targetUrl}\`);
+        // 1. Fetch Base HTML
+        sendStatus(`Fetching HTML from: ${targetUrl}`);
         let response;
         try {
              response = await axios.get(targetUrl, {
                 responseType: 'text',
-                timeout: 20000,
-                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36' }
-             });
+                timeout: 20000, // 20 seconds timeout for HTML fetch
+                 headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Cache-Control': 'no-cache', // Try to get fresh content
+                    'Pragma': 'no-cache'
+                }
+            });
+             sendStatus(`HTML fetched successfully (Status: ${response.status})`);
         } catch(htmlError) {
-             throw new Error(\`Failed to fetch base HTML: \${htmlError.message}\`);
+             const errorMessage = `Failed to fetch base HTML (${htmlError.code || 'Error'}): ${htmlError.message}`;
+             sendStatus(`ERROR: ${errorMessage}`);
+             throw new Error(errorMessage);
         }
 
         const htmlContent = response.data;
         const baseUrl = new URL(targetUrl);
 
-        sendStatus(mainWindow, 'Parsing HTML and identifying assets...');
+        // 2. Parse HTML and Download Assets
+        sendStatus('Parsing HTML and identifying assets...');
         const $ = cheerio.load(htmlContent);
         const downloadTasks = [];
-        const assetMap = new Map();
-        let assetCounter = 0;
+        const assetMap = new Map(); // Track assets to avoid duplicates { originalUrl -> localRelativePath }
+        let assetCounter = 0; // For generating unique names for assets without clear names
 
-        $('link[rel="stylesheet"][href], script[src], img[src], source[src], track[src], video[poster]').each((index, element) => {
+        const selectors = [
+            'link[rel="stylesheet"][href]',
+            'script[src]',
+            'img[src]',
+            'img[srcset]', // Handle responsive images
+            'source[src]',
+            'source[srcset]',
+            'video[poster]',
+            'audio[src]',
+            'track[src]',
+            'object[data]',
+            'embed[src]',
+             // Basic inline style url() check - might miss complex cases
+             '[style*="url("]'
+        ];
+
+        $(selectors.join(', ')).each((index, element) => {
             const $el = $(element);
-            let srcAttr = 'href';
-            if ($el.is('script') || $el.is('img') || $el.is('source') || $el.is('track') ) {
-                srcAttr = 'src';
-            } else if ($el.is('video[poster]')) {
-                 srcAttr = 'poster';
-            }
+            let attributeNames = []; // Attributes containing URLs for this element type
+            let isInlineStyle = false;
 
-            const originalUrlStr = $el.attr(srcAttr);
-            if (!originalUrlStr || originalUrlStr.startsWith('data:')) {
-                 return;
-            }
+             if ($el.is('link')) attributeNames = ['href'];
+             else if ($el.is('script, img, source, video, audio, track, embed')) attributeNames = ['src']; // Base cases
+             else if ($el.is('object')) attributeNames = ['data'];
 
-            try {
-                const assetUrl = new URL(originalUrlStr, baseUrl.href);
-
-                let filename = path.basename(assetUrl.pathname);
-                 filename = filename.split('?')[0].split('#')[0];
-                 filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || \`asset_\${assetCounter++}\${path.extname(assetUrl.pathname) || '.dat'}\`;
+             // Handle attributes with multiple URLs (srcset)
+             if ($el.attr('srcset')) attributeNames.push('srcset');
+             // Handle poster attribute
+             if ($el.is('video[poster]') && $el.attr('poster')) attributeNames.push('poster');
+              // Handle inline style
+              if($el.is('[style*="url("]')) isInlineStyle = true;
 
 
-                const localPath = path.join(assetsDownloadDir, filename);
-                const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/');
+             // Process standard attributes
+             attributeNames.forEach(attrName => {
+                 const value = $el.attr(attrName);
+                 if (!value) return;
 
-                if (!assetMap.has(assetUrl.href)) {
-                     assetMap.set(assetUrl.href, relativePathForHtml);
-                     sendStatus(mainWindow, \`Queueing download: \${filename} (from \${assetUrl.origin})\`);
-                    downloadTasks.push(
-                         downloadAsset(assetUrl, localPath).then(success => {
-                             if (success) {
-                                 $el.attr(srcAttr, relativePathForHtml);
-                             } else {
-                                // Optionally remove the element if download fails, or leave it pointing to original (might be broken)
-                                // $el.remove();
-                                sendStatus(mainWindow, \`Warning: Failed asset '\${filename}' will retain original URL in HTML.\`);
-                             }
-                         })
-                    );
-                } else {
-                     // Asset already queued or downloaded, reuse the local path
-                     $el.attr(srcAttr, assetMap.get(assetUrl.href));
-                }
+                 const urlsToProcess = [];
+                 if (attrName === 'srcset') {
+                     // Parse srcset: "image-1x.jpg 1x, image-2x.jpg 2x" -> ["image-1x.jpg", "image-2x.jpg"]
+                     value.split(',').forEach(part => {
+                         const url = part.trim().split(' ')[0];
+                         if (url) urlsToProcess.push(url);
+                     });
+                 } else {
+                     urlsToProcess.push(value);
+                 }
 
-            } catch (urlError) {
-               console.error(\`Skipping invalid URL: '\${originalUrlStr}' - \${urlError.message}\`);
-               sendStatus(mainWindow, \`Warning: Skipping invalid URL '\${originalUrlStr}'\`);
-            }
-        });
+                 let updatedValue = value; // Start with original value for srcset modification
 
-        sendStatus(mainWindow, \`Found \${assetMap.size} unique assets to download. Starting downloads...\`);
+                 urlsToProcess.forEach(originalUrlStr => {
+                     if (!originalUrlStr || originalUrlStr.startsWith('data:') || originalUrlStr.startsWith('blob:')) {
+                         return; // Skip data URIs and blob URIs
+                     }
+
+                     try {
+                         const assetUrl = new URL(originalUrlStr, baseUrl.href);
+
+                         // Generate a safe filename
+                         let filename = path.basename(assetUrl.pathname) || `asset_${assetCounter++}`;
+                          // Remove query params/hash and sanitize
+                          filename = filename.split('?')[0].split('#')[0];
+                          filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `asset_${assetCounter++}${path.extname(assetUrl.pathname) || '.dat'}`;
+
+                         const localPath = path.join(assetsDownloadDir, filename);
+                         const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/'); // Use forward slashes for HTML
+
+                         if (!assetMap.has(assetUrl.href)) {
+                              assetMap.set(assetUrl.href, relativePathForHtml);
+                              sendStatus(`Queueing download: ${filename} (from ${assetUrl.origin})`);
+                             downloadTasks.push(
+                                  downloadAsset(assetUrl, localPath).then(success => {
+                                      if (!success) {
+                                         sendStatus(`Warning: Failed asset '${filename}' will retain original URL ${attrName === 'src' || attrName === 'href' ? 'in HTML.' : 'if used.'}`);
+                                         // For critical assets like CSS/JS, maybe remove the element or log a bigger warning?
+                                      }
+                                  })
+                             );
+                         } else {
+                             // Asset already queued or downloaded, ensure relative path is correct
+                             sendStatus(`Asset already queued: ${filename} (using existing local path)`);
+                         }
+
+                         // Update the attribute value in the HTML
+                         // For srcset, we need to replace the specific URL part
+                         const localRelPath = assetMap.get(assetUrl.href); // Get the determined local path
+                         if (attrName === 'srcset') {
+                            updatedValue = updatedValue.replace(originalUrlStr, localRelPath);
+                         } else {
+                            $el.attr(attrName, localRelPath); // Direct replacement for single-URL attributes
+                         }
+
+                     } catch (urlError) {
+                        console.error(`Skipping invalid URL in ${attrName}: '${originalUrlStr}' - ${urlError.message}`);
+                        sendStatus(`Warning: Skipping invalid URL '${originalUrlStr}' in attribute ${attrName}`);
+                     }
+                 }); // End foreach url in attribute value
+
+                  if (attrName === 'srcset') {
+                       $el.attr(attrName, updatedValue); // Update srcset with all replacements done
+                  }
+             }); // End foreach attributeName
+
+              // Process inline styles
+              if(isInlineStyle) {
+                  let styleAttr = $el.attr('style');
+                  const urlRegex = /url\((['"]?)(.*?)\1\)/g; // Regex to find url(...)
+                  let match;
+                  let styleNeedsUpdate = false;
+                  let updatedStyle = styleAttr;
+
+                  while ((match = urlRegex.exec(styleAttr)) !== null) {
+                      const originalUrlStr = match[2]; // The URL inside url()
+
+                      if (!originalUrlStr || originalUrlStr.startsWith('data:') || originalUrlStr.startsWith('blob:')) {
+                          continue;
+                      }
+
+                       try {
+                           const assetUrl = new URL(originalUrlStr, baseUrl.href);
+                           let filename = path.basename(assetUrl.pathname) || `inline_asset_${assetCounter++}`;
+                           filename = filename.split('?')[0].split('#')[0];
+                           filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `inline_asset_${assetCounter++}${path.extname(assetUrl.pathname) || '.dat'}`;
+
+                           const localPath = path.join(assetsDownloadDir, filename);
+                           const relativePathForHtml = path.join(PACKAGED_ASSETS_DIR, filename).replace(/\\\\/g, '/');
+
+                           let localRelPathToUse;
+                           if (!assetMap.has(assetUrl.href)) {
+                               assetMap.set(assetUrl.href, relativePathForHtml);
+                               localRelPathToUse = relativePathForHtml;
+                               sendStatus(`Queueing inline style asset: ${filename} (from ${assetUrl.origin})`);
+                               downloadTasks.push(
+                                   downloadAsset(assetUrl, localPath).then(success => {
+                                       if (!success) sendStatus(`Warning: Failed inline style asset '${filename}' will retain original URL.`);
+                                   })
+                               );
+                           } else {
+                                localRelPathToUse = assetMap.get(assetUrl.href);
+                                sendStatus(`Inline style asset already queued: ${filename}`);
+                           }
+
+                           // Replace in the style attribute string
+                           // Need to be careful to replace only the URL part within the match
+                           const escapedOriginal = match[0].replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'); // Escape regex chars in original match
+                           updatedStyle = updatedStyle.replace(new RegExp(escapedOriginal), `url('${localRelPathToUse}')`);
+                           styleNeedsUpdate = true;
+
+                       } catch(urlError) {
+                           console.error(`Skipping invalid URL in style: '${originalUrlStr}' - ${urlError.message}`);
+                           sendStatus(`Warning: Skipping invalid URL '${originalUrlStr}' in inline style`);
+                       }
+                  } // End while loop for inline style urls
+
+                  if (styleNeedsUpdate) {
+                      $el.attr('style', updatedStyle);
+                  }
+              } // End if inline style
+        }); // End element processing
+
+        sendStatus(`Found ${assetMap.size} unique assets. Starting downloads...`);
         await Promise.all(downloadTasks);
-        sendStatus(mainWindow, 'Asset download process finished.');
+        sendStatus('Asset download process finished.');
 
+        // 3. Save Modified HTML
         const finalHtmlContent = $.html();
         await fs.writeFile(path.join(appContentDir, 'index.html'), finalHtmlContent);
-        sendStatus(mainWindow, 'Modified HTML saved.');
+        sendStatus('Modified HTML saved.');
 
-        sendStatus(mainWindow, 'Creating boilerplate for packaged app...');
-        const packageMainJsContent = \`
+        // 4. Create Boilerplate for Packaged App (main.js, package.json)
+        sendStatus('Creating boilerplate for packaged app...');
+        const packageMainJsContent = `
             const { app, BrowserWindow } = require('electron');
             const path = require('path');
 
-            function createWindow () {
-                const mainWindow = new BrowserWindow({
-                    width: 1280,
+            function createPackagedWindow () {
+                const win = new BrowserWindow({
+                    width: 1280, // Default size, can be adjusted
                     height: 800,
                     webPreferences: {
-                        nodeIntegration: false,
-                        contextIsolation: true,
-                        webSecurity: false, // Note: Security implications - allows loading local files easier
+                        nodeIntegration: false, // Best practice
+                        contextIsolation: true, // Best practice
+                        webSecurity: false, // **IMPORTANT**: Often needed to load local file:// resources, but has security risks. Only use if necessary and package trusted content.
                         spellcheck: false,
+                        preload: path.join(__dirname, 'packaged-preload.js') // Optional preload for packaged app
                     },
-                    autoHideMenuBar: true,
+                    autoHideMenuBar: true, // Cleaner look
+                    icon: path.join(__dirname, 'assets', 'icon.png') // Reference packaged icon if needed (adjust path/name)
                 });
 
-                // Use file:// protocol for loading local HTML
-                mainWindow.loadFile(path.join(__dirname, 'index.html'));
+                // Load the downloaded and modified HTML
+                win.loadFile(path.join(__dirname, 'index.html'));
 
+                // Optional: Open DevTools in packaged app for debugging
+                // win.webContents.openDevTools();
             }
 
-            app.whenReady().then(createWindow);
+            // Optional Preload for Packaged App (if needed for IPC or node access in renderer)
+            // Create packaged-preload.js if required:
+            // const { contextBridge, ipcRenderer } = require('electron');
+            // contextBridge.exposeInMainWorld('packagedAPI', { /* expose functions if needed */ });
+
+
+            app.whenReady().then(createPackagedWindow);
 
             app.on('window-all-closed', () => {
+                // Standard quit behavior
                 if (process.platform !== 'darwin') {
                     app.quit();
                 }
             });
 
             app.on('activate', () => {
+                // Standard macOS activation behavior
                 if (BrowserWindow.getAllWindows().length === 0) {
-                    createWindow();
+                    createPackagedWindow();
                 }
             });
-        \`;
+        `;
         await fs.writeFile(path.join(appContentDir, 'main.js'), packageMainJsContent);
+        // Create a minimal preload for the packaged app (even if empty, helps structure)
+        await fs.writeFile(path.join(appContentDir, 'packaged-preload.js'), `
+            // Preload script for the packaged application
+            // Use contextBridge to expose Node.js/Electron features to the renderer process if needed.
+            // Example:
+            // const { contextBridge } = require('electron');
+            // contextBridge.exposeInMainWorld('myAPI', {
+            //   doSomething: () => { /* ... */ }
+            // });
+            console.log('Packaged app preload script loaded.');
+        `);
 
-        // Get electron version from the *downloader's* package.json
+
+        // Determine Electron version to use in the packaged app
         let electronVersion;
         try {
-            // Use require on the __dirname which points to the *running* app's location
             const ownPackageJsonPath = path.join(__dirname, 'package.json');
             const ownPackageJson = await fs.readJson(ownPackageJsonPath);
-            // Look in devDependencies first, then dependencies
             electronVersion = ownPackageJson.devDependencies?.electron || ownPackageJson.dependencies?.electron;
-            if (!electronVersion) throw new Error('Electron version not found in package.json.');
-             sendStatus(mainWindow, \`Using Electron version: \${electronVersion}\`);
+            if (!electronVersion) throw new Error('Electron version not found in downloader package.json.');
+             sendStatus(`Using Electron version: ${electronVersion} for packaged app.`);
         } catch (e) {
-            console.error("Failed to read own package.json for Electron version:", e);
-            sendStatus(mainWindow, "Warning: Could not determine Electron version. Using default 'latest'. This might cause issues.");
-            electronVersion = "latest"; // Fallback, but less reliable
+            console.error("Failed to read downloader package.json for Electron version:", e);
+            sendStatus("Warning: Could not determine Electron version. Using 'latest'. This might cause issues.");
+            electronVersion = "latest"; // Fallback, less reliable
         }
 
-
+        // Create package.json for the packaged app
         const packageJsonContent = JSON.stringify({
-            name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-'),
+            name: PACKAGED_APP_NAME.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, ''), // Sanitize name
             version: "1.0.0",
-            description: \`Packaged version of \${baseUrl.host}\`,
+            description: `Packaged version of ${baseUrl.host}`,
             main: "main.js",
             author: "Websim Packager",
-            license: "UNLICENSED",
+            license: "UNLICENSED", // Or specify based on downloaded content license if known
             dependencies: {
-                // Electron MUST be a dependency here for packager to find it
+                // Electron MUST be a production dependency for the packaged app
                 "electron": electronVersion
             }
-            // No devDependencies needed for the packaged app itself
         }, null, 2);
         await fs.writeFile(path.join(appContentDir, 'package.json'), packageJsonContent);
+        sendStatus('Packaged app package.json created.');
 
-
-        sendStatus(mainWindow, 'Installing Electron dependency for the packaged app (this may take a moment)...');
+        // 5. Install Dependencies for the Packaged App (specifically Electron)
+        sendStatus('Installing Electron dependency for the packaged app (this may take a moment)...');
         await new Promise((resolve, reject) => {
-            // Use 'npm install' not 'npm ci' as there's no lock file
-            // --omit=dev is implicit with 'npm install' in production env (which packager sets), but explicit is fine.
-            // --ignore-scripts might break some native module builds if needed, but often safer.
-            // --prefer-offline can speed things up if deps are cached.
-            const installCommand = 'npm install --ignore-scripts --prefer-offline --no-audit --progress=false';
-            exec(installCommand, { cwd: appContentDir, timeout: 300000 }, (error, stdout, stderr) => {
+            // Use 'npm install' - it doesn't need package-lock.json
+            // --no-save: Prevent modification of package.json (already correct)
+            // --omit=dev: Ensure only production deps are installed (Electron)
+            // Other flags for cleaner/faster installs:
+            const installCommand = 'npm install --omit=dev --ignore-scripts --prefer-offline --no-audit --progress=false --no-fund';
+            sendStatus(`Executing in ${appContentDir}: ${installCommand}`);
+
+            exec(installCommand, { cwd: appContentDir, timeout: 300000 }, (error, stdout, stderr) => { // 5 min timeout
                 if (error) {
-                    console.error(\`Packaged app 'npm install' error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
-                    sendStatus(mainWindow, \`Error installing Electron for package: \${stderr || error.message}\`);
-                    return reject(new Error(\`npm install failed in temp directory: \${stderr || error.message}\`));
+                    console.error(`Packaged app 'npm install' error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
+                    const errMsg = `Error installing Electron for package: ${stderr || error.message}`;
+                    sendStatus(`ERROR: ${errMsg}`);
+                    return reject(new Error(`npm install failed in temp directory: ${errMsg}`));
                 }
                  if (stderr) {
-                     // npm install often prints warnings to stderr, treat them as info unless error occurred
-                     console.warn(\`Packaged app 'npm install' stderr (warnings/info):\\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Dependency installation completed (may have warnings, see console).\`);
+                     // npm install often prints warnings to stderr, treat them as info
+                     console.warn(`Packaged app 'npm install' stderr (warnings/info):\n${stderr}`);
+                     sendStatus(`Dependency installation completed (Note: Check console for any warnings from npm).`);
                  } else {
-                    sendStatus(mainWindow, 'Packaged app Electron dependency installed successfully.');
+                    sendStatus('Packaged app Electron dependency installed successfully.');
                  }
+                 console.log(`Packaged app 'npm install' stdout:\n${stdout}`);
                 resolve();
             });
         });
 
-        sendStatus(mainWindow, 'Starting application packaging (@electron/packager)...');
-        await fs.ensureDir(outputDirUserSelected);
+        // 6. Package the Application using @electron/packager
+        sendStatus('Starting application packaging (@electron/packager)...');
+        await fs.ensureDir(outputDirUserSelected); // Ensure final output dir exists
 
-        const iconPath = path.resolve(__dirname, 'assets', 'icon.ico');
+        // Check for icon (optional)
+        const iconPath = path.resolve(__dirname, 'assets', 'icon.ico'); // .ico for Windows
         let iconArg = '';
-        let iconPathExists = false;
         try {
-            iconPathExists = await fs.pathExists(iconPath);
-            if (iconPathExists) {
-                 // Ensure path is quoted correctly for the shell command
-                 iconArg = \`--icon="\${iconPath.replace(/\\\\/g, '/')}"\`;
-                 sendStatus(mainWindow, \`Using icon: \${iconPath}\`);
+            if (await fs.pathExists(iconPath)) {
+                 // Use path.relative to get a reliable path for the command line, needs careful quoting
+                 // Simpler: Use absolute path, properly quoted.
+                 iconArg = `--icon="${iconPath.replace(/\\\\/g, '/')}"`; // Quote and use forward slashes
+                 sendStatus(`Using icon: ${iconPath}`);
              } else {
-                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon.\`);
+                  sendStatus(`Warning: Icon file not found at ${iconPath}. Using default icon. Please create assets/icon.ico for a custom icon.`);
              }
         } catch(iconError) {
-             sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`);
+             sendStatus(`Warning: Error checking for icon file: ${iconError.message}`);
         }
 
-        // Define ignore patterns for electron-packager
-        // These are regex patterns, avoid shell quoting here.
-        const ignoreFlags = [
-            "--ignore=\"^/node_modules/@electron/packager($|/)\"", // Ignore the packager itself
-            "--ignore=\"^/node_modules/electron($|/)\"", // Packager includes electron runtime
-            "--ignore=\"^/\\.git($|/)\"",
-            "--ignore=\"^/dist($|/)\"",
-            "--ignore=\"^/temp-build-.*\"",
-            "--ignore=\"^/\\.vscode($|/)\"" // Ignore VSCode config
-        ];
-        const ignoreString = ignoreFlags.join(" ");
+        // Define ignore patterns for packager (as an array of regex)
+        const ignorePatterns = [
+             '^/node_modules/electron($|/)', // Packager includes Electron runtime
+             '^/node_modules/@electron/packager($|/)' // Exclude packager dev dep if present
+             // Add other patterns if needed, e.g., '^/\\.git($|/)'
+         ];
+         const ignoreArg = ignorePatterns.map(p => `--ignore="${p}"`).join(' ');
 
 
-        const finalAppName = PACKAGED_APP_NAME;
-        // Ensure output directory path is quoted for the shell
-        const outputDirQuoted = \`"\${outputDirUserSelected.replace(/\\\\/g, '/')}"\`;
-        const sourceDir = "."; // Package from the current directory (appContentDir)
+        const finalAppName = PACKAGED_APP_NAME; // Use the constant
+        // Ensure output directory path is quoted and uses forward slashes for consistency
+        const outputDirQuoted = `"${outputDirUserSelected.replace(/\\\\/g, '/')}"`;
+        const sourceDir = "."; // Package from the 'app' directory relative to cwd
 
-        // Use @electron/packager via npx
-        // Pass ignore flags correctly separated
-        const packagerCommand = \`npx @electron/packager@latest ${sourceDir} "${finalAppName}" --platform=win32 --arch=x64 --out=${outputDirQuoted} --overwrite ${iconArg} ${ignoreString}\`;
-        sendStatus(mainWindow, \`Executing: ${packagerCommand}\`);
+        // Construct the packager command
+        // Use npx to ensure the latest compatible packager is used or the one installed
+        const packagerCommand = `npx @electron/packager@latest ${sourceDir} "${finalAppName}" --platform=win32 --arch=x64 --out=${outputDirQuoted} --overwrite ${iconArg} ${ignoreArg}`;
+        sendStatus(`Executing packager: ${packagerCommand}`);
 
         await new Promise((resolve, reject) => {
-            // Run packager command from the 'app' directory containing package.json, main.js etc.
-            exec(packagerCommand, { cwd: appContentDir, timeout: 600000 }, (error, stdout, stderr) => {
+            // Run packager from the directory containing the packaged app's code (package.json, main.js)
+            exec(packagerCommand, { cwd: appContentDir, timeout: 600000 }, (error, stdout, stderr) => { // 10 min timeout
                 if (error) {
-                    console.error(\`@electron/packager execution error: \${error.message}\`);
-                    console.error(\`stderr: \${stderr}\`);
+                    console.error(`@electron/packager execution error: ${error.message}`);
+                    console.error(`stderr: ${stderr}`);
                     let errorDetail = stderr || error.message;
-                    // Try to provide more specific feedback
-                    if (errorDetail.includes("EACCES")) {
-                        errorDetail = "Permission denied. Check permissions for the output directory or temporary folder.";
-                    } else if (errorDetail.includes("ENOENT") || errorDetail.toLowerCase().includes("not found")) {
-                         errorDetail = "Command not found (ENOENT). Ensure Node.js/npm is installed and in PATH. Check for typos in command.";
-                    } else if (errorDetail.includes("syntax error") || errorDetail.includes("not recognized")) {
-                         errorDetail = \`Shell syntax error during packaging (maybe path/quote issue?): \${errorDetail}\`;
-                    } else if (errorDetail.includes("Cannot find module 'electron'")) {
-                         errorDetail = \`Electron module not found within the temporary package. 'npm install' might have failed: \${errorDetail}\`;
+                    if (errorDetail.includes("Cannot find module 'electron'")) {
+                         errorDetail = `Electron module not found within the temporary package. 'npm install' might have failed or packager couldn't find it. ${errorDetail}`;
+                    } else if (errorDetail.includes("EACCES")) {
+                        errorDetail = `Permission denied during packaging. Check permissions for output/temp folders. ${errorDetail}`;
+                    } else if (errorDetail.includes("ENOSPC")) {
+                         errorDetail = `No space left on device during packaging. ${errorDetail}`;
+                    } else if (errorDetail.includes("syntax error") || errorDetail.includes("unexpected")) {
+                         errorDetail = `Command syntax error during packaging (check paths/quotes?): ${errorDetail}`;
+                    } else if (errorDetail.includes("Unable to determine application name")) {
+                         errorDetail = `Packager failed to read name from temp package.json. ${errorDetail}`;
                     }
-                    sendStatus(mainWindow, \`Packaging failed: \${errorDetail}\`);
-                    return reject(new Error(\`@electron/packager command failed: \${errorDetail}\`));
+                    const errMsg = `Packaging failed: ${errorDetail}`;
+                    sendStatus(`ERROR: ${errMsg}`);
+                    return reject(new Error(`@electron/packager command failed: ${errorDetail}`));
                 }
-                console.log(\`@electron/packager stdout: \${stdout}\`);
+                console.log(`@electron/packager stdout: ${stdout}`);
                  if (stderr) {
                      // Packager often logs info/warnings to stderr
-                     console.warn(\`@electron/packager stderr (warnings/info):\\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Packaging finished (may have warnings, see console).\`);
+                     console.warn(`@electron/packager stderr (warnings/info):\n${stderr}`);
+                     sendStatus(`Packaging finished (Note: Check console for packager warnings).`);
                  } else {
-                    sendStatus(mainWindow, 'Application packaging successful!');
+                    sendStatus('Application packaging successful!');
                  }
                 resolve();
             });
         });
 
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`);
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`);
+        const finalOutputPath = path.join(outputDirUserSelected, `${finalAppName}-win32-x64`);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        sendStatus(`------------------------------------------`);
+        sendStatus(`SUCCESS! Packaging complete in ${duration}s.`);
+        sendStatus(`Application saved to: ${finalOutputPath}`);
+        sendStatus(`------------------------------------------`);
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`);
-        console.error(error.stack);
+        sendStatus(`------------------------------------------`);
+        sendStatus(`FAILURE: ${errorMessage}`);
+        sendStatus(`------------------------------------------`);
+        console.error(error.stack); // Log stack trace for debugging
         return { success: false, error: errorMessage };
     } finally {
+        // 7. Cleanup Temporary Directory
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`);
-                 // Add a small delay before cleanup, sometimes helps with file locks on Windows
-                 await new Promise(resolve => setTimeout(resolve, 500));
+                 sendStatus(`Cleaning up temporary directory: ${tempBuildDir}`);
+                 // Add a small delay before cleanup, helps avoid file lock issues on Windows
+                 await new Promise(resolve => setTimeout(resolve, 1000));
                  await fs.remove(tempBuildDir);
-                 sendStatus(mainWindow, 'Temporary directory cleaned up.');
+                 sendStatus('Temporary directory cleaned up successfully.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`);
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message} (You may need to delete it manually)\`);
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`);
+                sendStatus(`Warning: Could not fully clean up temporary directory: ${cleanupError.message} (You may need to delete it manually: ${tempBuildDir})`);
             }
         }
-        sendStatus(mainWindow, 'Process finished.');
+        const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
+        sendStatus(`Process finished in ${totalDuration}s.`);
     }
 });
 
-    // Add preload.js (Electron preload script)
+
+// Helper function to download a single asset
+async function downloadAsset(assetUrl, localPath) {
+    try {
+        await fs.ensureDir(path.dirname(localPath)); // Ensure directory exists
+        const response = await axios.get(assetUrl.href, {
+            responseType: 'arraybuffer', // Get data as raw bytes
+            timeout: 15000, // 15 seconds timeout per asset
+             headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36',
+                'Referer': assetUrl.origin // Sometimes helpful
+            }
+        });
+        await fs.writeFile(localPath, Buffer.from(response.data));
+        // sendStatus(`Downloaded: ${path.basename(localPath)}`); // Optional: Status per asset
+        return true;
+    } catch (err) {
+        console.error(`Failed to download asset: ${assetUrl.href} - ${err.message}`);
+        // Don't sendStatus here for every failure, gets too verbose. Caller will warn.
+        return false;
+    }
+}
+    `);
+
+    // Add preload.js (Electron preload script for the downloader app)
     projectFolder.file("preload.js", `
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
+    // Renderer -> Main (Invoke/Handle)
     selectDirectory: () => ipcRenderer.invoke('select-output-directory'),
-
     startPackaging: (url, outputDir) => ipcRenderer.invoke('download-and-package', url, outputDir),
 
+    // Main -> Renderer (Send/On)
     onStatusUpdate: (callback) => {
         const subscription = (_event, value) => callback(value);
         ipcRenderer.on('status-update', subscription);
-        // Return a function to unsubscribe
-        return () => ipcRenderer.removeListener('status-update', subscription);
+        // Return a function to unsubscribe -> Cleans up the listener when no longer needed
+        return () => {
+            console.log('[Preload] Removing status-update listener');
+            ipcRenderer.removeListener('status-update', subscription);
+        };
     },
+
+    // Optional: Function to remove a specific listener if needed, though the above is often sufficient
+    removeStatusListener: (listener) => {
+         ipcRenderer.removeListener('status-update', listener);
+    }
 });
+
+console.log('[Preload] Script executed, electronAPI exposed.');
     `);
 
-    // Add index.html (Electron renderer process UI)
+    // Add index.html (Electron renderer process UI for the downloader app)
     projectFolder.file("index.html", `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <!-- Relax CSP slightly to allow inline styles and scripts for simplicity in this context -->
-    <!-- A real-world app might use nonces or hashes -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <!-- CSP: Restrictive but allows inline styles for convenience here. -->
+    <!-- For production, consider stricter policies (nonces/hashes). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
     <title>Websim Downloader & Packager</title>
     <style>
         :root {
@@ -583,43 +775,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
             --border-color: #ced4da;
             --success-color: #28a745;
             --error-color: #dc3545;
-            --warning-color: #ffc107; 
-            --info-color: #17a2b8; 
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+            --text-color: #212529;
+            --font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            --font-family-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: var(--font-family-sans-serif);
             padding: 20px;
             background-color: var(--light-gray);
             margin: 0;
-            font-size: 16px;
+            font-size: 1rem; /* 16px default */
             line-height: 1.5;
-            color: var(--dark-gray);
+            color: var(--text-color);
             display: flex;
             flex-direction: column;
             height: 100vh;
             box-sizing: border-box;
-            overflow: hidden; 
+            overflow: hidden; /* Prevent body scroll, handle scrolling in status */
         }
         .container {
             background-color: #fff;
             padding: 25px 30px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            flex-shrink: 0; 
+            flex-shrink: 0; /* Prevent control area from shrinking */
             margin-bottom: 20px;
+            border: 1px solid var(--border-color);
         }
         h1 {
             color: var(--dark-gray);
             margin-top: 0;
             margin-bottom: 25px;
             font-size: 1.75rem;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--medium-gray);
             padding-bottom: 10px;
+            font-weight: 500;
         }
         label {
             display: block;
             margin-bottom: 6px;
-            color: #555;
+            color: #495057;
             font-weight: 600;
         }
         input[type="url"], input[type="text"] {
@@ -629,8 +826,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
             border: 1px solid var(--border-color);
             border-radius: 4px;
             font-size: 1rem;
-            box-sizing: border-box; 
+            box-sizing: border-box; /* Include padding and border in width */
             transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+            background-color: #fff; /* Ensure white background */
         }
         input[type="url"]:focus, input[type="text"]:focus {
             border-color: var(--primary-color);
@@ -639,24 +837,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
          input[readonly] {
             background-color: var(--medium-gray);
-            cursor: default;
+            cursor: not-allowed; /* Indicate it's not directly editable */
+            opacity: 0.8;
          }
         button {
             padding: 10px 20px;
             margin-right: 10px;
+            margin-top: 5px; /* Add space if buttons wrap */
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 1rem;
             font-weight: 500;
-            transition: background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease; 
+            transition: background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            vertical-align: middle; /* Align with input fields */
         }
         button#selectDirBtn {
             background-color: var(--secondary-color);
             color: white;
         }
-        button#selectDirBtn:hover:not(:disabled) { 
+        button#selectDirBtn:hover:not(:disabled) {
             background-color: #5a6268;
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
@@ -664,82 +865,93 @@ contextBridge.exposeInMainWorld('electronAPI', {
             background-color: var(--primary-color);
             color: white;
         }
-        button#packageBtn:hover:not(:disabled) { 
+        button#packageBtn:hover:not(:disabled) {
             background-color: #0056b3;
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
         button:disabled {
-            background-color: #cccccc !important; 
+            background-color: #cccccc !important; /* Ensure override */
             color: #666 !important;
             cursor: not-allowed;
             box-shadow: none !important;
-            opacity: 0.65; 
+            opacity: 0.65;
         }
         .dir-selection {
             display: flex;
-            align-items: center; 
-            margin-bottom: 20px; 
+            align-items: center;
+            margin-bottom: 20px; /* Space below directory selection */
         }
         .dir-selection input[type="text"] {
-            flex-grow: 1; 
-            margin: 0 10px 0 0; 
+            flex-grow: 1; /* Input takes available space */
+            margin: 0 10px 0 0; /* Remove bottom margin, add right margin */
         }
         .status-container {
-             flex-grow: 1; 
-             display: flex; 
+             flex-grow: 1; /* Takes remaining vertical space */
+             display: flex;
              flex-direction: column;
-             min-height: 150px; 
+             min-height: 150px; /* Minimum height */
+             background-color: #fff;
+             padding: 15px;
+             border-radius: 8px;
+             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+             border: 1px solid var(--border-color);
         }
+        .status-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+            flex-shrink: 0; /* Prevent label from shrinking */
+         }
         #status {
-            margin-top: 10px;
             padding: 15px;
-            background-color: var(--medium-gray);
+            background-color: var(--dark-gray); /* Dark background for log */
+            color: #f8f9fa; /* Light text */
             border: 1px solid var(--border-color);
             border-radius: 4px;
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; 
-            font-size: 0.875rem; 
-            white-space: pre-wrap;
+            font-family: var(--font-family-monospace);
+            font-size: 0.875rem; /* Smaller font for logs */
+            white-space: pre-wrap; /* Preserve whitespace and wrap lines */
             word-wrap: break-word;
-            overflow-y: auto; 
-             flex-grow: 1; 
-             border-top: 3px solid var(--secondary-color);
+            overflow-y: auto; /* Enable vertical scrolling */
+             flex-grow: 1; /* Allow log area to grow */
              line-height: 1.4;
-             color: #333;
-             max-height: 50vh; 
+             /* max-height: 50vh; Limit max height if needed, but flex-grow should handle it */
+             min-height: 100px; /* Ensure it's visible even when empty */
         }
-         .status-label {
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 5px; 
-            flex-shrink: 0; 
-         }
         .status-line {
-            margin-bottom: 3px; 
-            padding: 2px 4px; 
-            border-radius: 3px; 
+            margin-bottom: 4px;
+            padding: 3px 6px;
+            border-radius: 3px;
+            display: block; /* Ensure each message is on a new line */
         }
+        .status-line time {
+             color: #adb5bd; /* Dim timestamp */
+             margin-right: 8px;
+             font-size: 0.9em;
+        }
+        /* No background colors by default on dark bg, use text color/borders */
         .status-line.error {
-            color: var(--error-color);
+            color: #f06565; /* Lighter red for dark bg */
             font-weight: bold;
-            background-color: #f8d7da; 
             border-left: 3px solid var(--error-color);
         }
         .status-line.warning {
-            color: #856404; 
-            background-color: #fff3cd; 
-            border-left: 3px solid var(--warning-color); 
+            color: #ffcc66; /* Lighter yellow */
+            border-left: 3px solid var(--warning-color);
         }
         .status-line.success {
-            color: var(--success-color);
+            color: #69db7c; /* Lighter green */
             font-weight: bold;
-            background-color: #d4edda; 
             border-left: 3px solid var(--success-color);
         }
-         .status-line.info { 
+         .status-line.info {
+             color: #66d9ef; /* Lighter cyan */
              border-left: 3px solid var(--info-color);
-             color: #0c5460; 
-             background-color: #d1ecf1; 
          }
+         .status-line.default {
+              color: #ced4da; /* Default light gray text */
+              border-left: 3px solid var(--secondary-color);
+          }
     </style>
 </head>
 <body>
@@ -760,7 +972,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     <div class="status-container">
          <label class="status-label" for="status">Status Log:</label>
-        <div id="status">Enter a valid URL (e.g., https://...) and select an output directory.</div>
+        <div id="status"><span class="status-line default"><time>...</time>Enter a valid URL (e.g., https://...) and select an output directory.</span></div>
     </div>
 
     <script src="./renderer.js"></script>
@@ -768,170 +980,211 @@ contextBridge.exposeInMainWorld('electronAPI', {
 </html>
     `);
 
-    // Add renderer.js (Electron renderer process logic)
+    // Add renderer.js (Electron renderer process logic for the downloader app)
     projectFolder.file("renderer.js", `
-if (!window.electronAPI) {
-    console.error("FATAL: electronAPI not found on window. Preload script likely failed to execute or contextBridge is not working.");
-    alert("Error: Cannot communicate with the backend process. The application might not work correctly. Check the console (View -> Toggle Developer Tools) for more details.");
+// --- Check if Preload script worked ---
+if (typeof window.electronAPI?.startPackaging !== 'function') {
+    console.error("FATAL: window.electronAPI or required functions not found. Preload script likely failed.");
+    const message = "Error: Cannot initialize communication with the backend process. The application may not work correctly. Check the Developer Tools (View -> Toggle Developer Tools) console for more details.";
+    // Attempt to display error prominently even if status updates fail
+    const body = document.body;
+    const errorDiv = document.createElement('div');
+    errorDiv.textContent = message;
+    errorDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; padding:10px; background-color:red; color:white; z-index:9999; text-align:center; font-weight:bold;";
+    if (body) body.prepend(errorDiv); else alert(message); // Fallback alert
+
+    // Disable controls permanently if API is missing
+    document.getElementById('selectDirBtn').disabled = true;
+    document.getElementById('packageBtn').disabled = true;
+    document.getElementById('urlInput').disabled = true;
+
 } else {
-    console.log('[Renderer] electronAPI found. Script loaded successfully.');
-}
+    console.log('[Renderer] electronAPI found. Initializing UI listeners.');
 
-const urlInput = document.getElementById('urlInput');
-const outputDirInput = document.getElementById('outputDirInput');
-const selectDirBtn = document.getElementById('selectDirBtn');
-const packageBtn = document.getElementById('packageBtn');
-const statusDiv = document.getElementById('status');
+    // --- DOM Elements ---
+    const urlInput = document.getElementById('urlInput');
+    const outputDirInput = document.getElementById('outputDirInput');
+    const selectDirBtn = document.getElementById('selectDirBtn');
+    const packageBtn = document.getElementById('packageBtn');
+    const statusDiv = document.getElementById('status');
 
-let isProcessing = false;
-let removeStatusListener = null; 
+    // --- State ---
+    let isProcessing = false;
+    let removeStatusListener = null; // Function to unsubscribe from status updates
 
-function addStatus(message, type = 'info') {
-    console.log(\`[Status-\${type}] \${message}\`); 
+    // --- Functions ---
 
-    const line = document.createElement('div');
-    line.classList.add('status-line');
-    line.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`; 
+    // Add a formatted line to the status log
+    function addStatus(message, type = 'default') {
+        // Sanitize message slightly (optional)
+        message = String(message || '').trim();
+        if (!message) return; // Don't log empty messages
 
-    line.classList.add(type); 
-    statusDiv.appendChild(line);
-    statusDiv.scrollTop = statusDiv.scrollHeight; 
-}
+        console.log(`[Status-${type}] ${message}`); // Log to console as well
 
-function clearStatus() {
-    statusDiv.innerHTML = ''; 
-    addStatus("Log cleared."); 
-}
+        const line = document.createElement('span'); // Use span for inline display within the pre-like div
+        line.classList.add('status-line', type);
 
-function setControlsEnabled(enabled) {
-    isProcessing = !enabled;
-    urlInput.disabled = !enabled;
-    selectDirBtn.disabled = !enabled;
-    packageBtn.disabled = !enabled || !isFormValid();
+        const time = document.createElement('time');
+        time.textContent = new Date().toLocaleTimeString();
+        line.appendChild(time);
 
-    if (isProcessing) {
-        packageBtn.textContent = 'Processing...';
-    } else {
-        packageBtn.textContent = 'Download & Package';
-    }
-}
+        line.appendChild(document.createTextNode(message)); // Add message text
 
-function isFormValid() {
-    let isValid = true;
-    const urlValue = urlInput.value.trim();
-    const dirValue = outputDirInput.value.trim();
+        statusDiv.appendChild(line);
 
-    if (!urlValue || !urlInput.checkValidity() || !urlValue.toLowerCase().startsWith('http')) {
-         isValid = false;
+        // Auto-scroll to the bottom
+        statusDiv.scrollTop = statusDiv.scrollHeight;
     }
 
-    if (!dirValue) {
-        isValid = false;
+    // Clear the status log
+    function clearStatus() {
+        statusDiv.innerHTML = ''; // Clear content
+        addStatus("Log cleared.");
     }
 
-    return isValid;
-}
+    // Enable/disable form controls during processing
+    function setControlsEnabled(enabled) {
+        isProcessing = !enabled;
+        urlInput.disabled = !enabled;
+        selectDirBtn.disabled = !enabled;
+        // Package button depends on both processing state and form validity
+        packageBtn.disabled = !enabled || !isFormValid();
 
-selectDirBtn.addEventListener('click', async () => {
-    if (!window.electronAPI?.selectDirectory) {
-        addStatus("Error: Directory selection feature not available.", 'error');
-        return;
+        packageBtn.textContent = isProcessing ? 'Processing...' : 'Download & Package';
     }
-    addStatus('Opening directory selector...');
-    setControlsEnabled(false); 
-    try {
-        const directoryPath = await window.electronAPI.selectDirectory();
-        if (directoryPath) {
-            outputDirInput.value = directoryPath; 
-            addStatus(\`Output directory selected: \${directoryPath}\`, 'info');
-            if (isFormValid()) {
-                packageBtn.disabled = isProcessing;
+
+    // Check if URL and output directory are validly set
+    function isFormValid() {
+        let isValid = true;
+        const urlValue = urlInput.value.trim();
+        const dirValue = outputDirInput.value.trim();
+
+        // Basic URL validation (starts with http/https, not empty)
+        if (!urlValue || !urlValue.toLowerCase().startsWith('http') || !urlInput.checkValidity()) {
+             isValid = false;
+             // Optionally add visual feedback to invalid field
+             urlInput.style.borderColor = urlValue ? 'red' : ''; // Red border if invalid but not empty
+        } else {
+             urlInput.style.borderColor = ''; // Reset border if valid
+        }
+
+        if (!dirValue) {
+            isValid = false;
+        }
+
+        // Update package button state based on validity (only if not processing)
+        if (!isProcessing) {
+           packageBtn.disabled = !isValid;
+        }
+        return isValid;
+    }
+
+    // --- Event Listeners ---
+
+    // Directory Selection Button
+    selectDirBtn.addEventListener('click', async () => {
+        addStatus('Opening directory selector...', 'info');
+        setControlsEnabled(false); // Disable controls while dialog is open
+        try {
+            const directoryPath = await window.electronAPI.selectDirectory();
+            if (directoryPath) {
+                outputDirInput.value = directoryPath;
+                addStatus(`Output directory set: ${directoryPath}`, 'info');
+            } else {
+                 addStatus('Directory selection cancelled.', 'warning');
             }
-        } else {
-             addStatus('Directory selection cancelled.', 'warning');
+        } catch (error) {
+            console.error('Error selecting directory via IPC:', error);
+            addStatus(`Error selecting directory: ${error.message || 'Unknown error'}`, 'error');
+        } finally {
+             setControlsEnabled(true); // Re-enable controls
+             isFormValid(); // Re-validate form, potentially enabling package button
         }
-    } catch (error) {
-        console.error('Error selecting directory via IPC:', error);
-        addStatus(\`Error selecting directory: \${error.message || 'Unknown error'}\`, 'error');
-    } finally {
-         setControlsEnabled(true); 
-    }
-});
+    });
 
-packageBtn.addEventListener('click', async () => {
-    if (!isFormValid() || isProcessing) {
-        addStatus("Please ensure a valid URL (starting with http/https) is entered and an output directory is selected.", "warning");
-        return; 
-    }
-    if (!window.electronAPI?.startPackaging) {
-         addStatus("Error: Packaging feature not available.", 'error');
-         return;
-    }
-
-    const targetUrl = urlInput.value.trim();
-    const outputDir = outputDirInput.value.trim();
-
-    clearStatus(); 
-    addStatus(\`Starting download and packaging for: \${targetUrl}\`, 'info');
-    setControlsEnabled(false); 
-
-    try {
-        const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
-
-        if (result && result.success) {
-            addStatus(\`------------------------------------------\`, 'success');
-            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
-            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
-            addStatus(\`------------------------------------------\`, 'success');
-        } else {
-             addStatus(\`------------------------------------------\`, 'error');
-             addStatus(\`FAILURE: Process encountered an error.\`, 'error');
-             addStatus(\`Error details: \${result?.error || 'Unknown error during packaging.'}\`, 'error');
-             addStatus(\`------------------------------------------\`, 'error');
+    // Package Button
+    packageBtn.addEventListener('click', async () => {
+        if (!isFormValid() || isProcessing) {
+            addStatus("Please ensure a valid URL (starting with http/https) is entered and an output directory is selected.", "warning");
+            return;
         }
-    } catch (error) {
-        console.error('IPC invocation error (startPackaging):', error);
-        addStatus(\`------------------------------------------\`, 'error');
-        addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with backend: \${error.message || 'Unknown IPC error'}\`, 'error');
-        addStatus(\`------------------------------------------\`, 'error');
-    } finally {
-        setControlsEnabled(true); 
-    }
-});
 
-urlInput.addEventListener('input', () => {
-    packageBtn.disabled = !isFormValid() || isProcessing;
-});
-urlInput.addEventListener('blur', () => {
-    packageBtn.disabled = !isFormValid() || isProcessing;
-}); 
+        const targetUrl = urlInput.value.trim();
+        const outputDir = outputDirInput.value.trim();
 
-if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function') {
+        clearStatus();
+        addStatus(`Starting download and packaging for: ${targetUrl}`, 'info');
+        setControlsEnabled(false);
+
+        try {
+            const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
+
+            // Status updates during the process are handled by the onStatusUpdate listener
+            // Here, we just handle the final result object/error from the invoke call
+
+            if (result && result.success) {
+                 // Final success message is usually sent via status update, but can add one here too
+                 addStatus(`Packaging process completed. Check log for details.`, 'success');
+            } else {
+                 // Error should have been sent via status update, but log a fallback
+                 addStatus(`Packaging process failed. Error: ${result?.error || 'Unknown error from backend.'}`, 'error');
+            }
+        } catch (error) {
+            // This catches errors in the IPC call itself (e.g., main process crashed, invoke rejected unexpectedly)
+            console.error('IPC invocation error (startPackaging):', error);
+            addStatus(`CRITICAL RENDERER ERROR: Failed to communicate with backend: ${error.message || 'Unknown IPC error'}`, 'error');
+            addStatus(`Packaging process aborted due to communication failure.`, 'error');
+        } finally {
+            setControlsEnabled(true); // Always re-enable controls
+            isFormValid(); // Re-check validity
+        }
+    });
+
+    // Input validation on change/blur
+    urlInput.addEventListener('input', isFormValid);
+    urlInput.addEventListener('blur', isFormValid);
+    // We don't need listeners for outputDirInput as it's readonly and set via button
+
+    // --- Setup Status Update Listener ---
     try {
+        if (removeStatusListener) removeStatusListener(); // Remove previous listener if any
+
         removeStatusListener = window.electronAPI.onStatusUpdate((message) => {
-             let type = 'info'; 
-             message = String(message || ''); 
+             let type = 'default'; // Default type
 
-             if (message.startsWith('ERROR:')) {
-                 type = 'error';
-                 message = message.substring(6).trim(); 
-             } else if (message.startsWith('Warning:')) {
-                 type = 'warning';
-                 message = message.substring(8).trim(); 
-             } else if (message.includes('successful!') || message.includes('SUCCESS') || message.includes('complete.')) {
-                 type = 'success';
-              } else if (message.includes('failed') || message.includes('FAILURE')) {
+             // Basic message type detection
+             message = String(message || '');
+             const lowerMessage = message.toLowerCase();
+
+              if (lowerMessage.startsWith('error:') || lowerMessage.includes('failed:') || lowerMessage.includes('failure:')) {
                   type = 'error';
-              }
-              addStatus(message, type);
-        });
-        console.log("[Renderer] Status update listener registered successfully.");
+                  // Optional: Remove prefix like "ERROR: " for cleaner display
+                  if (message.startsWith('ERROR:')) message = message.substring(6).trim();
+                  else if (message.startsWith('FAILURE:')) message = message.substring(8).trim();
 
+             } else if (lowerMessage.startsWith('warning:')) {
+                  type = 'warning';
+                  if (message.startsWith('Warning:')) message = message.substring(8).trim();
+
+             } else if (lowerMessage.includes('success') || lowerMessage.includes('complete')) {
+                  type = 'success';
+             } else if (lowerMessage.includes('starting') || lowerMessage.includes('fetching') || lowerMessage.includes('creating') || lowerMessage.includes('installing') || lowerMessage.includes('packaging') || lowerMessage.includes('using') || lowerMessage.includes('found') || lowerMessage.includes('downloading')) {
+                 type = 'info';
+             }
+
+             addStatus(message, type);
+        });
+
+        console.log("[Renderer] Status update listener registered successfully.");
+        addStatus("Ready. Waiting for URL and output directory.", "info");
+
+        // Cleanup listener on window unload
         window.addEventListener('beforeunload', () => {
             if (removeStatusListener) {
-                console.log("[Renderer] Cleaning up status update listener.");
-                removeStatusListener(); 
-                removeStatusListener = null; 
+                console.log("[Renderer] Cleaning up status update listener before unload.");
+                removeStatusListener();
+                removeStatusListener = null;
             }
         });
 
@@ -939,17 +1192,17 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
          console.error("[Renderer] Error setting up status update listener:", error);
          addStatus("Error: Failed to set up status updates from backend.", 'error');
     }
-} else {
-    console.error("[Renderer] ERROR: window.electronAPI.onStatusUpdate is not available. Status updates will not be received.");
-    addStatus("Error: Cannot receive status updates from backend (API not found).", 'error');
-}
 
-packageBtn.disabled = true;
+    // --- Initial State ---
+    isFormValid(); // Set initial button state
+
+} // End of check for window.electronAPI
     `);
 
     // --- Assets ---
     const assetsFolder = projectFolder.folder("assets");
 
+    // Add SVG icon (user must convert this to icon.ico for Windows packaging)
     const svgIcon = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256">
   <defs>
@@ -957,52 +1210,53 @@ packageBtn.disabled = true;
       <stop offset="0%" style="stop-color:#007bff;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
     </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dy="2"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.5"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <rect width="100" height="100" rx="18" ry="18" fill="url(#grad1)"/>
-  <path d="M 25,75 V 35 Q 25,25 35,25 H 65 Q 75,25 75,35 V 50 H 60 V 35 Q 60,30 55,30 H 40 Q 35,30 35,35 V 75 H 25 Z M 45,75 V 50 H 75 V 65 Q 75,70 70,70 H 55 Q 45,70 45,75 Z" fill="#ffffff"/>
+  <rect width="96" height="96" x="2" y="2" rx="18" ry="18" fill="url(#grad1)" filter="url(#shadow)"/>
+  <path d="M 28,72 V 38 Q 28,30 36,30 H 64 Q 72,30 72,38 V 50 H 62 V 40 Q 62,35 58,35 H 42 Q 38,35 38,40 V 72 H 28 Z M 50,72 V 52 H 72 V 62 Q 72,68 66,68 H 56 Q 50,68 50,72 Z" fill="#ffffff" stroke="#ffffff" stroke-width="1" stroke-linejoin="round"/>
+  <text x="50" y="90" font-family="sans-serif" font-size="10" fill="#ffffff" text-anchor="middle" style="opacity:0.7;">Package</text>
 </svg>`;
     assetsFolder.file("icon.svg", svgIcon);
+    // Add placeholder for the required .ico file
+    assetsFolder.file("icon_readme.txt", "Please convert icon.svg to icon.ico using an online converter or image editor and place it in this 'assets' directory for the Windows executable icon.");
 
-    projectFolder.file(".gitignore", `# Node.js Modules
+
+    // Add .gitignore
+    projectFolder.file(".gitignore", `# Node modules
 node_modules/
 
-# Packaged Application Output (electron-packager / electron-builder)
+# Packaged application output directories
 dist/
 out/
 release/
-build/
-*.exe
-*.dmg
-*.pkg
-*.app
-*.deb
-*.rpm
-*.snap
-*.AppImage
-*-win32-x64/
-*-darwin-x64/
-*-linux-x64/
+packaged-*/
 
-# Build Artifacts & Temporary Files
+# Build artifacts
+build/
 *.o
 *.obj
 *.dylib
 *.dll
 *.so
+
+# Log files
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.npm/
-*.zip
-*.tar.gz
-*.tgz
+*.logs
 
-# Temporary Directories Used by This App
-temp-*
-websim-build-*/
-
-# OS Generated Files
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -1011,13 +1265,27 @@ websim-build-*/
 ehthumbs.db
 Thumbs.db
 
-# IDE / Editor Specific
+# IDE / Editor directories
 .idea/
 .vscode/
 *.swp
 *~
+
+# Temporary build directory used by this app
+temp-build-*/
+
+# Environment variables file
+.env
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
 `);
 
+    // --- Generate and Download Zip ---
     downloadBtn.textContent = 'Generating Zip...';
     downloadBtn.disabled = true;
 
@@ -1026,7 +1294,7 @@ Thumbs.db
             type: "blob",
             compression: "DEFLATE",
             compressionOptions: {
-                level: 9
+                level: 9 // Max compression
             },
             comment: `Generated Electron project for websim downloading/packaging on ${new Date().toISOString()}`
         });
@@ -1035,7 +1303,7 @@ Thumbs.db
         downloadBtn.disabled = false;
     } catch(err) {
         console.error("Error generating zip file:", err);
-        alert("Failed to generate the project zip file. See console for details.");
+        alert("Failed to generate the project zip file. Check console for details.");
         downloadBtn.textContent = 'Error - Try Again?';
         downloadBtn.disabled = false;
     }
