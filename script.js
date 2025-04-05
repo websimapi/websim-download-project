@@ -1006,7 +1006,7 @@ Thumbs.db
             },
             comment: `Generated Electron project for websim downloading/packaging on ${new Date().toISOString()}`
         });
-        FileSaver.saveAs(content, `${projectFolderName}.zip`);
+        saveAs(content, `${projectFolderName}.zip`);
         downloadBtn.textContent = 'Download Project (.zip)';
         downloadBtn.disabled = false;
     } catch(err) {
