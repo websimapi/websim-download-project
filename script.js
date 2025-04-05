@@ -27,7 +27,7 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 
         // Add the main Node.js files
         zip.file('package.json', JSON.stringify(packageJson, null, 2));
-        zip.file('main.js', await fetchProjectFile('script.js'));
+        zip.file('main.js', await fetchProjectFile('main.js'));
         zip.file('preload.js', createPreloadJs());
         zip.file('index.html', createIndexHtml());
 
@@ -44,8 +44,16 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 });
 
 async function fetchProjectFile(filename) {
-    const response = await fetch(filename);
-    return await response.text();
+    try {
+        const response = await fetch(filename);
+        if (!response.ok) {
+            return `// This is a placeholder file for ${filename}\n// The original file could not be fetched\n`;
+        }
+        return await response.text();
+    } catch (error) {
+        console.error(`Error fetching ${filename}:`, error);
+        return `// This is a placeholder file for ${filename}\n// Error: ${error.message}\n`;
+    }
 }
 
 function createPreloadJs() {
