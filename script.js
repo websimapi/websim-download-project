@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+import { saveAs } from 'file-saver';
 
 const downloadBtn = document.getElementById('downloadBtn');
 
@@ -424,8 +424,8 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
                 }
                  // Log warnings from stderr as well
                  if (stderr) {
-                     console.warn(\`Packaged app 'npm install' stderr (warnings):\\n\${stderr}\`);
-                     sendStatus(mainWindow, \`Dependency installation completed with warnings (see console).\`);
+                     console.warn(\`Packaged app 'npm install' stderr (warnings):\\n\${stderr}\`); 
+                     sendStatus(mainWindow, \`Dependency installation completed with warnings (see console).\`); 
                  } else {
                     sendStatus(mainWindow, 'Packaged app dependencies installed successfully.');
                  }
