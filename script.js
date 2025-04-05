@@ -433,7 +433,11 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             });
         });
 
-        sendStatus(mainWindow, 'Starting application packaging (electron-packager)...');
+        const finalAppName = PACKAGED_APP_NAME;
+        const finalOutputDir = outputDirUserSelected.replace(/\\/g, '/'); 
+        const packagerCommand = \`npx electron-packager . "\${finalAppName}" --platform=win32 --arch=x64 --out="\${finalOutputDir}" --overwrite \${iconArg} \${ignoreString}\`; 
+        sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
+
         await fs.ensureDir(outputDirUserSelected);
 
         const iconPath = path.resolve(__dirname, 'assets', 'icon.ico'); 
@@ -461,38 +465,6 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
              sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`); 
         }
 
-
-        const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = outputDirUserSelected.replace(/\\/g, '/'); 
-        const packagerCommand = `npx electron-packager . "${finalAppName}" --platform=win32 --arch=x64 --out="${finalOutputDir}" --overwrite ${iconArg} ${ignoreString}`; 
-        sendStatus(mainWindow, `Executing: ${packagerCommand}`); 
-
-        await new Promise((resolve, reject) => {
-            exec(packagerCommand, { cwd: appContentDir, timeout: 600000 }, (error, stdout, stderr) => { 
-                if (error) {
-                    console.error(\`electron-packager execution error: \${error.message}\`); 
-                    console.error(\`stderr: \${stderr}\`); 
-                    let errorDetail = stderr || error.message;
-                    if (errorDetail.includes("EACCES")) {
-                        errorDetail = "Permission denied. Try running the command with sudo or check file/folder permissions.";
-                    } else if (errorDetail.includes("ENOENT")) {
-                         errorDetail = "Command not found (ENOENT). Ensure npx and electron-packager are correctly installed/accessible.";
-                    } else if (errorDetail.includes("Syntax error")) {
-                         errorDetail = \`Shell syntax error during packaging: \${errorDetail}\`;
-                    }
-                    sendStatus(mainWindow, \`Packaging failed: \${errorDetail}\`); 
-                    return reject(new Error(\`electron-packager command failed: \${errorDetail}\`)); 
-                }
-                console.log(\`electron-packager stdout: \${stdout}\`); 
-                 if (stderr) {
-                     console.warn(\`electron-packager stderr (warnings):\\n\${stderr}\`); 
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`); 
-                 } else {
-                    sendStatus(mainWindow, 'Application packaging successful!');
-                 }
-                resolve();
-            });
-        });
 
         const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); 
         sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`); 
