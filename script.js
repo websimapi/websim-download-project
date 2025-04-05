@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+import saveAs from 'file-saver';
 
 const downloadBtn = document.getElementById('downloadBtn');
 
@@ -173,7 +173,7 @@ SOFTWARE.
 
     // Add main.js (Electron main process)
     projectFolder.file("main.js", `
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra'); 
 const axios = require('axios');
