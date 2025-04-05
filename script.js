@@ -448,45 +448,48 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
         const ignoreString = ignoreArgs.join(" "); 
 
 
+        // Check if running on Windows to decide whether to include icon
+        const isWindows = process.platform === 'win32';
         let iconArg = '';
         try {
             const iconExists = await fs.pathExists(iconPath);
-            if (iconExists) {
-                 iconArg = \`--icon="\${iconPath.replace(/\\\\/g, '/')}"\`; 
-                 sendStatus(mainWindow, \`Using icon: \${iconPath}\`); 
+            if (iconExists && isWindows) {
+                 iconArg = `--icon="${iconPath.replace(/\\\\/g, '/')}"`;
+                 sendStatus(mainWindow, `Using icon: ${iconPath}`); 
+             } else if (iconExists && !isWindows) {
+                 sendStatus(mainWindow, `Note: Icon file found but skipped on ${process.platform} to avoid Wine dependency.`);
              } else {
-                  sendStatus(mainWindow, \`Warning: Icon file not found at \${iconPath}. Using default icon.\`); 
+                  sendStatus(mainWindow, `Warning: Icon file not found at ${iconPath}. Using default icon.`); 
              }
         } catch(iconError) {
-             sendStatus(mainWindow, \`Warning: Error checking for icon file: \${iconError.message}\`); 
+             sendStatus(mainWindow, `Warning: Error checking for icon file: ${iconError.message}`); 
         }
 
-
         const finalAppName = PACKAGED_APP_NAME;
-        const finalOutputDir = \`"\${outputDirUserSelected.replace(/\\\\/g, '/')}"\`; 
-        const packagerCommand = \`npx electron-packager . "\${finalAppName}" --platform=win32 --arch=x64 --out=\${finalOutputDir} --overwrite \${iconArg} \${ignoreString}\`; 
-        sendStatus(mainWindow, \`Executing: \${packagerCommand}\`); 
+        const finalOutputDir = `"${outputDirUserSelected.replace(/\\\\/g, '/')}"`; 
+        const packagerCommand = `npx electron-packager . "${finalAppName}" --platform=win32 --arch=x64 --out=${finalOutputDir} --overwrite ${iconArg} ${ignoreString}`;
+        sendStatus(mainWindow, `Executing: ${packagerCommand}`); 
 
         await new Promise((resolve, reject) => {
             exec(packagerCommand, { cwd: appContentDir, timeout: 600000 }, (error, stdout, stderr) => { 
                 if (error) {
-                    console.error(\`electron-packager execution error: \${error.message}\`); 
-                    console.error(\`stderr: \${stderr}\`); 
+                    console.error(`electron-packager execution error: ${error.message}`); 
+                    console.error(`stderr: ${stderr}`); 
                     let errorDetail = stderr || error.message;
                     if (errorDetail.includes("EACCES")) {
                         errorDetail = "Permission denied. Try running the command with sudo or check file/folder permissions.";
                     } else if (errorDetail.includes("ENOENT")) {
                          errorDetail = "Command not found (ENOENT). Ensure npx and electron-packager are correctly installed/accessible.";
                     } else if (errorDetail.includes("Syntax error")) {
-                         errorDetail = \`Shell syntax error during packaging: \${errorDetail}\`;
+                         errorDetail = `Shell syntax error during packaging: ${errorDetail}`;
                     }
-                    sendStatus(mainWindow, \`Packaging failed: \${errorDetail}\`); 
-                    return reject(new Error(\`electron-packager command failed: \${errorDetail}\`)); 
+                    sendStatus(mainWindow, `Packaging failed: ${errorDetail}`); 
+                    return reject(new Error(`electron-packager command failed: ${errorDetail}`)); 
                 }
-                console.log(\`electron-packager stdout: \${stdout}\`); 
+                console.log(`electron-packager stdout: ${stdout}`); 
                  if (stderr) {
-                     console.warn(\`electron-packager stderr (warnings):\\n\${stderr}\`); 
-                     sendStatus(mainWindow, \`Packaging finished with warnings (see console for details).\`); 
+                     console.warn(`electron-packager stderr (warnings):\n${stderr}`); 
+                     sendStatus(mainWindow, `Packaging finished with warnings (see console for details).`); 
                  } else {
                     sendStatus(mainWindow, 'Application packaging successful!');
                  }
@@ -494,25 +497,25 @@ ipcMain.handle('download-and-package', async (event, targetUrl, outputDirUserSel
             });
         });
 
-        const finalOutputPath = path.join(outputDirUserSelected, \`\${PACKAGED_APP_NAME}-win32-x64\`); 
-        sendStatus(mainWindow, \`Packaging complete. Application saved to: \${finalOutputPath}\`); 
+        const finalOutputPath = path.join(outputDirUserSelected, `${PACKAGED_APP_NAME}-win32-x64`); 
+        sendStatus(mainWindow, `Packaging complete. Application saved to: ${finalOutputPath}`); 
         return { success: true, outputDir: finalOutputPath };
 
     } catch (error) {
         console.error("Error during download/packaging process:", error);
         const errorMessage = error.message || "An unknown error occurred.";
-        sendStatus(mainWindow, \`ERROR: \${errorMessage}\`); 
+        sendStatus(mainWindow, `ERROR: ${errorMessage}`); 
         console.error(error.stack);
         return { success: false, error: errorMessage }; 
     } finally {
         if (tempBuildDir) {
             try {
-                 sendStatus(mainWindow, \`Cleaning up temporary directory: \${tempBuildDir}\`); 
+                 sendStatus(mainWindow, `Cleaning up temporary directory: ${tempBuildDir}`); 
                  await fs.remove(tempBuildDir);
                  sendStatus(mainWindow, 'Temporary directory cleaned up.');
             } catch (cleanupError) {
-                console.error(\`Failed to clean up temporary directory \${tempBuildDir}: \${cleanupError.message}\`); 
-                sendStatus(mainWindow, \`Warning: Could not fully clean up temporary directory: \${cleanupError.message}\`); 
+                console.error(`Failed to clean up temporary directory ${tempBuildDir}: ${cleanupError.message}`); 
+                sendStatus(mainWindow, `Warning: Could not fully clean up temporary directory: ${cleanupError.message}`); 
             }
         }
         sendStatus(mainWindow, 'Process finished.');
@@ -763,11 +766,11 @@ let isProcessing = false;
 let removeStatusListener = null; 
 
 function addStatus(message, type = 'info') {
-    console.log(\`[Status-\${type}] \${message}\`); 
+    console.log(`[Status-${type}] ${message}`); 
 
     const line = document.createElement('div');
     line.classList.add('status-line');
-    line.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`; 
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`; 
 
     line.classList.add(type); 
     statusDiv.appendChild(line);
@@ -819,7 +822,7 @@ selectDirBtn.addEventListener('click', async () => {
         const directoryPath = await window.electronAPI.selectDirectory();
         if (directoryPath) {
             outputDirInput.value = directoryPath; 
-            addStatus(\`Output directory selected: \${directoryPath}\`, 'info');
+            addStatus(`Output directory selected: ${directoryPath}`, 'info');
             if (isFormValid()) {
                 packageBtn.disabled = isProcessing;
             }
@@ -828,7 +831,7 @@ selectDirBtn.addEventListener('click', async () => {
         }
     } catch (error) {
         console.error('Error selecting directory via IPC:', error);
-        addStatus(\`Error selecting directory: \${error.message || 'Unknown error'}\`, 'error');
+        addStatus(`Error selecting directory: ${error.message || 'Unknown error'}`, 'error');
     } finally {
          setControlsEnabled(true); 
     }
@@ -848,28 +851,28 @@ packageBtn.addEventListener('click', async () => {
     const outputDir = outputDirInput.value.trim();
 
     clearStatus(); 
-    addStatus(\`Starting download and packaging for: \${targetUrl}\`, 'info');
+    addStatus(`Starting download and packaging for: ${targetUrl}`, 'info');
     setControlsEnabled(false); 
 
     try {
         const result = await window.electronAPI.startPackaging(targetUrl, outputDir);
 
         if (result && result.success) {
-            addStatus(\`------------------------------------------\`, 'success');
-            addStatus(\`SUCCESS! Application packaged successfully.\`, 'success');
-            addStatus(\`Output Location: \${result.outputDir}\`, 'success');
-            addStatus(\`------------------------------------------\`, 'success');
+            addStatus(`------------------------------------------`, 'success');
+            addStatus(`SUCCESS! Application packaged successfully.`, 'success');
+            addStatus(`Output Location: ${result.outputDir}`, 'success');
+            addStatus(`------------------------------------------`, 'success');
         } else {
-             addStatus(\`------------------------------------------\`, 'error');
-             addStatus(\`FAILURE: Process encountered an error.\`, 'error');
-             addStatus(\`Error details: \${result?.error || 'Unknown error during packaging.'}\`, 'error');
-             addStatus(\`------------------------------------------\`, 'error');
+             addStatus(`------------------------------------------`, 'error');
+             addStatus(`FAILURE: Process encountered an error.`, 'error');
+             addStatus(`Error details: ${result?.error || 'Unknown error during packaging.'}`, 'error');
+             addStatus(`------------------------------------------`, 'error');
         }
     } catch (error) {
         console.error('IPC invocation error (startPackaging):', error);
-        addStatus(\`------------------------------------------\`, 'error');
-        addStatus(\`CRITICAL RENDERER ERROR: Failed to communicate with backend: \${error.message || 'Unknown IPC error'}\`, 'error');
-        addStatus(\`------------------------------------------\`, 'error');
+        addStatus(`------------------------------------------`, 'error');
+        addStatus(`CRITICAL RENDERER ERROR: Failed to communicate with backend: ${error.message || 'Unknown IPC error'}`, 'error');
+        addStatus(`------------------------------------------`, 'error');
     } finally {
         setControlsEnabled(true); 
     }
